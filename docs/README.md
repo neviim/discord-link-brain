@@ -12,6 +12,25 @@ para rodar. Aqui está o resto, separado por **o que você está tentando fazer*
 | saber **por que** algo foi feito daquele jeito | [DECISOES.md](DECISOES.md) |
 | mexer no código, rodar teste, estender | [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md) |
 
+## Os dez comandos
+
+| Comando | O que faz | Gasta LLM? | Fala no Discord? |
+|---|---|---|---|
+| `dlb sync` | captura links novos, classifica e escreve no vault | sim, 1× por dia de links | só reação |
+| `dlb backfill` | mesma coisa, mastigando o passado em fatias | sim | só reação |
+| `dlb migrar` | cria a nota atômica do que já está no vault | **não** | não |
+| `dlb sintese` | o que a semana foi: temas, conexões, perguntas | sim, 1× por período | não |
+| `dlb buscar` | pergunta ao acervo, pela linha de comando | sim, 1× por pergunta | não |
+| `dlb responder` | vigia `?buscar` no canal e responde | sim, por pergunta | **sim** |
+| `dlb ressurgir` | 3 links antigos com o resumo | **não** | **sim** |
+| `dlb temas` | que conceitos viraram tema — relatório | não | não |
+| `dlb semana` | apanhado bruto dos últimos dias | não | não |
+| `dlb doctor` | confere configuração, vault e acesso | não | só com `--testar-envio` |
+
+Detalhe de uso: são executados como `python3 -m dlb <comando>` **a partir da raiz
+do projeto** (não há pacote instalado), ou `./dlb.sh dev <comando>` pelo container,
+que resolve o diretório sozinho.
+
 ## Em uma frase
 
 Lê os links que você jogou num canal do Discord, descobre do que cada um trata,

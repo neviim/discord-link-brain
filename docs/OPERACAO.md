@@ -169,6 +169,27 @@ relações que você acrescentou e tudo abaixo de `## Minhas notas`. Não duplic
 referência no diário. As notas de `10_FONTES/` seguem com o valor original — a fonte
 não se corrige, e o link certo é derivável.
 
+## Consultar o acervo
+
+```bash
+python3 -m dlb buscar "o que eu salvei sobre agentes de IA?"
+```
+
+Manda o acervo inteiro para o modelo e responde citando os links. Se não houver nada
+sobre o assunto, ele diz isso — não improvisa. No Discord, o mesmo pela pergunta
+`?buscar …` no canal do responder.
+
+```bash
+python3 -m dlb ressurgir --dry-run          # o que postaria hoje
+python3 -m dlb ressurgir --dias 90 --n 5    # mais antigos, mais deles
+python3 -m dlb temas --limiar 3             # olhar antes de virar tema
+python3 -m dlb temas --markdown             # bloco pronto para colar num MOC
+```
+
+`ressurgir` não gasta modelo — o resumo já existe na nota. `--dias` muda a idade
+mínima (padrão 30) e `--n` quantos voltam (padrão 3). `temas` não escreve nada no
+vault, nunca.
+
 ## Mudei o `.env` — como aplicar no prod
 
 **`restart` não serve.** O `env_file` do compose é aplicado quando o container é

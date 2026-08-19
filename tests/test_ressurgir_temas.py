@@ -278,3 +278,19 @@ class TestTemas(AcervoCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFaixaChegando(AcervoCase):
+    """Regressão de exibição: com limiar baixo a faixa saía invertida."""
+
+    def test_limiar_baixo_nao_anuncia_faixa_invertida(self):
+        self.criar("https://e.com/a", "A", 10, ["Nostr"])
+        self.criar("https://e.com/b", "B", 11, ["Nostr"])
+        saida = formatar_temas(levantar(self.root, self.acervo(), limiar=2))
+        self.assertNotIn("2–1", saida)
+        self.assertNotIn("Chegando", saida)
+
+    def test_limiar_alto_anuncia_a_faixa_certa(self):
+        self.criar("https://e.com/a", "A", 10, ["Nostr"])
+        saida = formatar_temas(levantar(self.root, self.acervo(), limiar=8))
+        self.assertIn("Chegando (6–7 links)", saida)

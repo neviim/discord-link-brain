@@ -131,6 +131,11 @@ python3 -m dlb migrar
 python3 -m dlb sintese --semana anterior
 python3 -m dlb sintese --mes 2026-08
 
+# consultar o acervo, ressurgir o esquecido, ver o que virou tema
+python3 -m dlb buscar "o que eu salvei sobre agentes de IA?"
+python3 -m dlb ressurgir --dry-run
+python3 -m dlb temas
+
 # ver o que faria sem escrever nada
 python3 -m dlb sync --since 3 --dry-run
 

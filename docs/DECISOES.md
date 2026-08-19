@@ -585,9 +585,11 @@ com outra tolerância.
 
 ## O que ainda não foi resolvido
 
-- **`cli.py` sem teste** (1029 linhas, 0%). Testá-lo exige encenar Discord, LLM e
-  vault ao mesmo tempo. Boa parte do risco está coberta pelas peças embaixo, mas
-  a orquestração em si não está.
+- **`cli.py` testado pela metade** (1033 linhas, 38%). O parser, a resolução
+  de semana e os comandos que só leem o vault (`migrar`, `temas`, `buscar`,
+  `ressurgir`, `sintese`) têm teste. Faltam `sync`, `backfill`, `doctor` e o
+  laço do `responder` — esses exigem encenar Discord e LLM ao mesmo tempo, e o
+  custo de dublar tudo ainda não se paga.
 - **Cloudflare e X/Twitter** continuam bloqueando a leitura. O link entra com
   resumo baseado só no seu comentário.
 - **Site renderizado por JavaScript** devolve texto vazio; os metadados `og:`

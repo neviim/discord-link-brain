@@ -25,20 +25,21 @@ arquivo, linha e o que era esperado.
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, reparo do link da mensagem |
+| `test_ressurgir_temas.py` | 38 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, regeneração |
-| `test_ressurgir_temas.py` | 36 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_nota_de_link.py` | 35 | **o contrato com o ESQUEMA**: vocabulário fechado, nome de arquivo, o que `--force` preserva |
 | `test_vault.py` | 32 | as quatro camadas, imutabilidade, idempotência do lote posterior, autoridade do dedup |
+| `test_cli.py` | 30 | **a orquestração**: o parser, a semana ISO, a guarda de postar, e o fio entre comando e módulo |
+| `test_state_config.py` | 29 | os dois cursores, `.env` vs ambiente, as marcas, e o `.env.example` não ficar para trás |
 | `test_responder.py` | 28 | **o bot falando em público**: nunca duas vezes, nunca a si mesmo, marca só depois de postar |
-| `test_state_config.py` | 27 | os dois cursores, `.env` vs ambiente, as marcas, os mapas canal:valor |
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
 | `test_busca.py` | 21 | acento na pergunta, IDF, e **a URL vindo do acervo e não do modelo** |
-| `test_extract.py` | 16 | normalização de URL, canonização YouTube/X, dedup, fuso, `guild_id` |
+| `test_extract.py` | 18 | normalização de URL, canonização, fuso, `guild_id`, e o laço do ressurgimento |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
-| **total** | **368** | 65% das linhas de `dlb/` |
+| **total** | **404** | 74% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -56,23 +57,23 @@ Estado atual:
 
 ```
 dlb/config.py         100%
+dlb/ressurgir.py      100%
 dlb/state.py          100%
-dlb/ressurgir.py       98%
+dlb/corpus.py          97%
 dlb/extract.py         97%
-dlb/corpus.py          96%
 dlb/migrar.py          96%
 dlb/vault.py           95%
 dlb/busca.py           94%
+dlb/temas.py           93%
 dlb/models.py          93%
-dlb/temas.py           92%
 dlb/frontmatter.py     91%
 dlb/responder.py       89%
 dlb/classify.py        72%
 dlb/sintese.py         68%   ← o que falta é caminho de subprocess
 dlb/discord_client.py  50%   ← o que falta é caminho de rede
-dlb/enrich.py          35%   ← idem
-dlb/cli.py              0%   ← orquestração; ver DECISOES.md
-TOTAL                  65%
+dlb/cli.py             38%   ← falta sync/backfill/doctor; ver DECISOES.md
+dlb/enrich.py          35%   ← caminho de rede
+TOTAL                  74%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que

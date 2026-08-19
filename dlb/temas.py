@@ -242,11 +242,15 @@ def formatar(rel: Relatorio, markdown: bool = False) -> str:
             if len(tema.variantes) > 1:
                 linhas.append(f"        grafias: {', '.join(sorted(tema.variantes))}")
 
-        linhas += ["", f"Chegando ({max(2, rel.limiar - 2)}–{rel.limiar - 1} links):", ""]
-        for tema in rel.chegando:
-            linhas.append(f"  {tema.total:3} links · {tema.nome}")
-        if not rel.chegando:
-            linhas.append("  nenhum.")
+        # Com limiar <= 3 não existe faixa "chegando": tudo que tem 2+ já é
+        # maduro. Anunciar "(2–1 links)" seria uma faixa invertida.
+        piso = max(2, rel.limiar - 2)
+        if piso <= rel.limiar - 1:
+            linhas += ["", f"Chegando ({piso}–{rel.limiar - 1} links):", ""]
+            for tema in rel.chegando:
+                linhas.append(f"  {tema.total:3} links · {tema.nome}")
+            if not rel.chegando:
+                linhas.append("  nenhum.")
 
         linhas += ["", f"Outros {rel.resto} conceito(s) com menos que isso."]
         if rel.descartados:
