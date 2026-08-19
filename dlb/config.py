@@ -60,6 +60,13 @@ class Config:
     llm_model: str = "claude-opus-5"
     claude_bin: str = "claude"
 
+    # A síntese periódica roda em backend próprio: são assinaturas diferentes, e
+    # o agendador já disputa a janela de uso da Claude com a classificação diária.
+    sintese_backend: str = "codex"   # codex | claude-cli | anthropic
+    sintese_model: str = ""          # vazio = padrão do backend
+    codex_bin: str = "codex"
+    sintese_timeout: float = 900.0
+
     enrich: bool = True
     enrich_timeout: float = 10.0
 
@@ -119,6 +126,10 @@ class Config:
             llm_backend=os.environ.get("LLM_BACKEND", cls.llm_backend),
             llm_model=os.environ.get("LLM_MODEL", cls.llm_model),
             claude_bin=os.environ.get("CLAUDE_BIN", cls.claude_bin),
+            sintese_backend=os.environ.get("SINTESE_BACKEND", cls.sintese_backend),
+            sintese_model=os.environ.get("SINTESE_MODEL", cls.sintese_model),
+            codex_bin=os.environ.get("CODEX_BIN", cls.codex_bin),
+            sintese_timeout=float(os.environ.get("SINTESE_TIMEOUT", "900")),
             enrich=os.environ.get("ENRICH_LINKS", "1") not in ("0", "false", "no"),
             enrich_timeout=float(os.environ.get("ENRICH_TIMEOUT", "10")),
             link_notes=os.environ.get("LINK_NOTES", "1") not in ("0", "false", "no"),

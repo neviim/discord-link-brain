@@ -36,6 +36,12 @@ MINHAS_NOTAS = "## Minhas notas"
 # título real medido no vault tem 82 caracteres.
 TITULO_MAX = 100
 
+# Cerca da síntese: só o que está entre os dois é regenerado. Texto humano fora
+# dela sobrevive a `--force`, mesmo princípio do SECTION_MARK no diário.
+SINTESE_ABRE = "<!-- dlb:sintese"
+SINTESE_FECHA = "<!-- /dlb:sintese -->"
+SINTESE_SECAO_MOC = "## Sínteses de período"
+
 
 @dataclass
 class WriteResult:
@@ -377,6 +383,184 @@ class Vault:
                     vistos.add(url)
                     pendentes.append((dia, url))
         return pendentes
+
+
+    # ------------------------------------------------------- síntese de período
+
+    def sintese_path(self, rotulo: str) -> Path:
+        """`2026-W34` → `40_DIARIO/Semanal 2026-W34.md`; `2026-08` → `Mensal …`."""
+        nome = f"Semanal {rotulo}" if "W" in rotulo else f"Mensal {rotulo}"
+        return self.root / "40_DIARIO" / f"{nome}.md"
+
+    def sintese_hash(self, rotulo: str) -> str:
+        """O hash gravado na cerca, ou "" se a nota não existe."""
+        path = self.sintese_path(rotulo)
+        if not path.is_file():
+            return ""
+        m = re.search(
+            re.escape(SINTESE_ABRE) + r"[^>]*?hash=(\w+)",
+            path.read_text(encoding="utf-8", errors="replace"),
+        )
+        return m.group(1) if m else ""
+
+    def sintese_bloco(self, rotulo: str) -> str:
+        """O miolo gerado de uma síntese, sem as cercas.
+
+        É o que o rollup mensal consome: o mês se faz das semanas, não dos links
+        crus — é isso que faz ler o mês valer mais que reler trinta dias.
+        """
+        path = self.sintese_path(rotulo)
+        if not path.is_file():
+            return ""
+        texto = path.read_text(encoding="utf-8", errors="replace")
+        i = texto.find(SINTESE_ABRE)
+        j = texto.find(SINTESE_FECHA)
+        if i == -1 or j <= i:
+            return ""
+        # Pula o resto da linha do marcador de abertura.
+        i = texto.find("\n", i)
+        return texto[i + 1 : j].strip() if i != -1 else ""
+
+    def _render_sintese(self, rotulo: str, sintese, entradas: list) -> str:
+        """O miolo. `sintese` é um `sintese.Sintese`; `entradas`, `LinkEntry`."""
+        linhas: list[str] = []
+        if sintese.panorama:
+            linhas += [sintese.panorama, ""]
+
+        if sintese.temas:
+            linhas += ["### Temas", ""]
+            for tema in sintese.temas:
+                linhas.append(f"**{tema.nome}**")
+                if tema.texto:
+                    linhas += ["", tema.texto]
+                citados = [entradas[i] for i in tema.links if 0 <= i < len(entradas)]
+                if citados:
+                    linhas.append("")
+                    for e in citados:
+                        linhas.append(f"- [[{e.nome}]] — {e.dominio} · {e.dia}")
+                linhas.append("")
+
+        if sintese.conexoes:
+            linhas += ["### Conexões", ""]
+            for conexao in sintese.conexoes:
+                linhas.append(f"- {conexao.texto}")
+                citados = [
+                    entradas[i] for i in conexao.links if 0 <= i < len(entradas)
+                ]
+                if citados:
+                    alvos = " · ".join(f"[[{e.nome}]]" for e in citados)
+                    linhas.append(f"  {alvos}")
+            linhas.append("")
+
+        if sintese.perguntas:
+            linhas += ["### Perguntas em aberto", ""]
+            linhas += [f"- {p}" for p in sintese.perguntas]
+            linhas += ["", "#acao/revisar", ""]
+
+        return "\n".join(linhas).rstrip() + "\n"
+
+    def write_sintese(
+        self,
+        rotulo: str,
+        sintese,
+        entradas: list,
+        fontes: list[str] | None = None,
+        relacionado: list[str] | None = None,
+        fechada: bool = False,
+        force: bool = False,
+    ) -> WriteResult:
+        """Escreve `Semanal AAAA-Www` ou `Mensal AAAA-MM` em `40_DIARIO/`.
+
+        Mora ali porque a camada é "humano + agente" e serve para registro
+        cronológico — e síntese de período é exatamente isso. `20_WIKI/` está
+        fora (o pipeline não escreve lá, e não é um conceito); `30_MOC/` também
+        (52 notas/ano diluiriam a camada de navegação).
+
+        Só o miolo entre as cercas é regenerado: o que você escrever fora
+        sobrevive a `--force`.
+        """
+        from .sintese import hash_fonte
+
+        path = self.sintese_path(rotulo)
+        digest = hash_fonte(entradas) if entradas else rotulo
+        miolo = (
+            f"{SINTESE_ABRE} hash={digest} n={len(entradas)} -->\n\n"
+            + self._render_sintese(rotulo, sintese, entradas)
+            + f"\n{SINTESE_FECHA}\n"
+        )
+        titulo = f"Semanal {rotulo}" if "W" in rotulo else f"Mensal {rotulo}"
+
+        if path.exists():
+            meta, corpo = frontmatter.split(
+                path.read_text(encoding="utf-8", errors="replace")
+            )
+            i, j = corpo.find(SINTESE_ABRE), corpo.find(SINTESE_FECHA)
+            if i != -1 and j > i:
+                novo_corpo = corpo[:i] + miolo + corpo[j + len(SINTESE_FECHA) :].lstrip("\n")
+            else:
+                # Nota feita à mão: acrescenta a cerca, nunca sobrescreve.
+                novo_corpo = corpo.rstrip() + "\n\n" + miolo
+            meta = meta or self._meta_sintese(titulo, rotulo, fechada)
+            meta["atualizado"] = _today()
+            meta["status"] = "maduro" if fechada else "crescendo"
+            for valor in relacionado or []:
+                frontmatter.add_to_list(meta, "relacionado", valor)
+            for valor in fontes or []:
+                frontmatter.add_to_list(meta, "fonte", valor)
+            self._write(path, frontmatter.compose(meta, novo_corpo))
+            return WriteResult(path, "atualizado", f"{len(entradas)} links")
+
+        meta = self._meta_sintese(titulo, rotulo, fechada)
+        for valor in relacionado or []:
+            frontmatter.add_to_list(meta, "relacionado", valor)
+        for valor in fontes or []:
+            frontmatter.add_to_list(meta, "fonte", valor)
+        corpo = f"# {titulo}\n\n{miolo}\n## Minhas notas\n\n"
+        self._write(path, frontmatter.compose(meta, corpo))
+        return WriteResult(path, "criado", f"{len(entradas)} links")
+
+    @staticmethod
+    def _meta_sintese(titulo: str, rotulo: str, fechada: bool) -> dict:
+        return {
+            "tipo": "diario",
+            # Semana em curso ainda vai receber link; fechada não muda mais.
+            "status": "maduro" if fechada else "crescendo",
+            "criado": _today(),
+            "atualizado": _today(),
+            "tags": ["area/pkm"],
+            "parte-de": [f"[[{MOC_NAME}]]"],
+            "relacionado": [],
+            "fonte": [],
+        }
+
+    def register_sintese(self, rotulo: str) -> WriteResult:
+        """Lista a síntese no MOC, para ela não nascer órfã (invariante 3)."""
+        path = self.root / "30_MOC" / f"{MOC_NAME}.md"
+        if not path.exists():
+            return WriteResult(path, "pulado", "MOC ausente")
+
+        titulo = f"Semanal {rotulo}" if "W" in rotulo else f"Mensal {rotulo}"
+        texto = path.read_text(encoding="utf-8", errors="replace")
+        if f"[[{titulo}]]" in texto:
+            return WriteResult(path, "pulado", "síntese já listada")
+
+        meta, body = frontmatter.split(texto)
+        meta["atualizado"] = _today()
+        entry = f"- [[{titulo}]]"
+        if SINTESE_SECAO_MOC in body:
+            body = body.replace(
+                SINTESE_SECAO_MOC, f"{SINTESE_SECAO_MOC}\n\n{entry}", 1
+            )
+        else:
+            marcador = "## Capturas por dia"
+            secao = f"{SINTESE_SECAO_MOC}\n\n{entry}\n\n{marcador}"
+            body = (
+                body.replace(marcador, secao, 1)
+                if marcador in body
+                else body.rstrip() + f"\n\n{SINTESE_SECAO_MOC}\n\n{entry}\n"
+            )
+        self._write(path, frontmatter.compose(meta, body))
+        return WriteResult(path, "atualizado", "síntese listada no MOC")
 
     # ------------------------------------------------------------- 10_FONTES
 

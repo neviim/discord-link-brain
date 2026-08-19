@@ -25,15 +25,17 @@ arquivo, linha e o que era esperado.
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, bloco de candidatos, reparo do link da mensagem |
+| `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, o que sobrevive à regeneração |
 | `test_nota_de_link.py` | 35 | **o contrato com o ESQUEMA**: vocabulário fechado, nome de arquivo, e o que `--force` preserva do humano |
 | `test_vault.py` | 32 | as quatro camadas, imutabilidade, idempotência do lote posterior, autoridade do dedup |
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
 | `test_state_config.py` | 27 | os dois cursores, `.env` vs ambiente, as duas marcas, os mapas canal:valor |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
+| `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
 | `test_extract.py` | 16 | normalização de URL, canonização YouTube/X, dedup, fuso, `guild_id` no link da mensagem |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML em silêncio |
-| **total** | **221** | |
+| **total** | **283** | 65% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -53,15 +55,17 @@ Estado atual:
 dlb/config.py         100%
 dlb/state.py          100%
 dlb/extract.py         97%
+dlb/corpus.py          96%
 dlb/migrar.py          96%
 dlb/vault.py           95%
 dlb/models.py          93%
-dlb/frontmatter.py     86%
+dlb/frontmatter.py     91%
 dlb/classify.py        72%
+dlb/sintese.py         68%   ← o que falta é caminho de subprocess
 dlb/discord_client.py  50%   ← o que falta é caminho de rede
 dlb/enrich.py          35%   ← idem
 dlb/cli.py              0%   ← orquestração; ver DECISOES.md
-TOTAL                  64%
+TOTAL                  65%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que
@@ -132,6 +136,17 @@ Se o valor vier do LLM, valide contra vocabulário fechado em `classify.py`, com
 Em `extract.py`, junto de `YOUTUBE_HOSTS` e `X_HOSTS`. Duas coisas: o conjunto
 de domínios equivalentes e a forma canônica. Escreva o teste primeiro — é uma
 função pura, o teste sai em três linhas.
+
+### Acrescentar um backend de síntese
+
+Uma função `(cfg, prompt, system) -> str` em `sintese.py` e um `elif` em
+`_despachar`. O parsing, a validação de `id` e a montagem dos wikilinks já valem
+para todos os backends — é ali que a fronteira do LLM mora, não no runner.
+
+Os runners da síntese são separados dos de `classify.py` de propósito: lá o
+`SYSTEM_PROMPT` está embutido na função, e parametrizá-lo quebraria os 27 testes
+que trocam `_run_claude_cli` como global do módulo. Quando aparecer um terceiro
+consumidor de LLM, é a hora de extrair um `llm.py` — não antes.
 
 ### Acrescentar um backend de LLM
 

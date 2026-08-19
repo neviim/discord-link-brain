@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -12,7 +13,16 @@ from .config import Config, ConfigError
 from .discord_client import DiscordClient, DiscordError, ja_marcada, snowflake_for
 from .enrich import fetch_meta
 from .extract import day_of_message, extract_links, group_by_day
+from .corpus import (
+    da_semana,
+    do_mes,
+    ler_links,
+    semana_anterior,
+    semana_atual,
+    semanas_do_mes,
+)
 from .migrar import migrar
+from .sintese import SinteseError, gerar, gerar_mes, hash_fonte
 from .models import LinkHit, LinkNote, PageMeta
 from .state import ChannelState, Store
 from .vault import Vault
@@ -20,6 +30,16 @@ from .vault import Vault
 
 def _log(message: str) -> None:
     print(message, flush=True)
+
+
+def _hoje_local() -> str:
+    """Hoje no fuso configurado — a virada do dia define a semana ISO."""
+    from zoneinfo import ZoneInfo
+
+    import os as _os
+
+    tz = _os.environ.get("TIMEZONE", "America/Sao_Paulo")
+    return datetime.now(ZoneInfo(tz)).date().isoformat()
 
 
 def _since_snowflake(days: int) -> str:
@@ -466,6 +486,129 @@ def cmd_migrar(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def _rotulo_semana(args) -> str:
+    """Resolve `--semana` para um rótulo ISO. Padrão: a semana corrente."""
+    hoje = _hoje_local()
+    pedido = (args.semana or "atual").strip().lower()
+    if pedido in ("atual", "corrente", "esta"):
+        return semana_atual(hoje)
+    if pedido in ("anterior", "passada", "ultima", "última"):
+        return semana_anterior(hoje)
+    if re.fullmatch(r"\d{4}-w\d{2}", pedido):
+        return pedido.upper().replace("W", "W")
+    raise ConfigError(
+        f"--semana não entendido: {args.semana!r} (use atual, anterior ou AAAA-Www)"
+    )
+
+
+def cmd_sintese(cfg: Config, args: argparse.Namespace) -> int:
+    """Uma chamada de LLM por período: o que a semana foi, não o que ela teve."""
+    cfg.validate_vault()
+    vault = Vault(cfg.vault_path, dry_run=args.dry_run)
+    acervo = ler_links(cfg.vault_path)
+    if not acervo:
+        _log("Nenhuma nota em 50_LINKS/. Rode `dlb migrar` primeiro.")
+        return 0
+
+    if args.mes:
+        return _sintese_mes(cfg, vault, acervo, args)
+
+    rotulo = _rotulo_semana(args)
+    entradas = da_semana(acervo, rotulo)
+    if not entradas:
+        _log(f"{rotulo}: nenhum link capturado nesta semana.")
+        return 0
+
+    # Semana em curso ainda vai receber link, então a nota nasce `crescendo` e
+    # vira `maduro` quando a semana passa.
+    fechada = rotulo < semana_atual(_hoje_local())
+
+    # Hash do material: regenerar semana que não mudou gastaria uma chamada de
+    # 30-60s para produzir o mesmo texto.
+    digest = hash_fonte(entradas)
+    if not args.force and vault.sintese_hash(rotulo) == digest:
+        _log(f"{rotulo}: {len(entradas)} link(s), material inalterado — nada a fazer.")
+        _log("       (use --force para regenerar de todo modo)")
+        return 0
+
+    _log(f"{rotulo}: {len(entradas)} link(s) · backend {cfg.sintese_backend}")
+    try:
+        resultado = gerar(cfg, rotulo, entradas)
+    except SinteseError as exc:
+        print(f"  ERRO na síntese: {exc}", file=sys.stderr)
+        return 1
+
+    _escrever(cfg, vault, rotulo, resultado, entradas, args)
+    if args.dry_run:
+        _preview_sintese(resultado)
+    return 0
+
+
+def _sintese_mes(cfg: Config, vault: Vault, acervo, args) -> int:
+    mes = args.mes.strip()
+    if not re.fullmatch(r"\d{4}-\d{2}", mes):
+        raise ConfigError(f"--mes não entendido: {mes!r} (use AAAA-MM)")
+
+    # O rollup se faz das sínteses semanais, não dos links crus: é isso que faz
+    # ler o mês valer mais que reler trinta dias.
+    blocos, faltando = {}, []
+    for semana in semanas_do_mes(acervo, mes):
+        bloco = vault.sintese_bloco(semana)
+        if bloco:
+            blocos[semana] = bloco
+        else:
+            faltando.append(semana)
+
+    for semana in faltando:
+        _log(f"       {semana} sem síntese — pulada. Rode `dlb sintese --semana {semana}`.")
+    if not blocos:
+        _log(f"{mes}: nenhuma síntese semanal para consolidar.")
+        return 1 if faltando else 0
+
+    _log(f"{mes}: {len(blocos)} semana(s) · backend {cfg.sintese_backend}")
+    try:
+        resultado = gerar_mes(cfg, mes, blocos)
+    except SinteseError as exc:
+        print(f"  ERRO no rollup: {exc}", file=sys.stderr)
+        return 1
+
+    entradas = do_mes(acervo, mes)
+    relacionado = [f"[[Semanal {s}]]" for s in sorted(blocos)]
+    _escrever(cfg, vault, mes, resultado, entradas, args, relacionado=relacionado)
+    if args.dry_run:
+        _preview_sintese(resultado)
+    return 0
+
+
+def _escrever(cfg, vault, rotulo, resultado, entradas, args, relacionado=None):
+    if relacionado is None:
+        # Só daily que existe de verdade: link não-resolvido derruba o invariante 4.
+        dias = sorted({e.dia for e in entradas})
+        relacionado = [
+            f"[[{d}]]" for d in dias if (cfg.vault_path / "40_DIARIO" / f"{d}.md").is_file()
+        ]
+    fontes = sorted({f"[[{e.fonte}]]" for e in entradas if e.fonte})
+    fechada = "W" not in rotulo or rotulo < semana_atual(_hoje_local())
+
+    _log("    " + str(vault.ensure_moc()))
+    _log("    " + str(vault.write_sintese(
+        rotulo, resultado, entradas,
+        fontes=fontes, relacionado=relacionado, fechada=fechada, force=args.force,
+    )))
+    _log("    " + str(vault.register_sintese(rotulo)))
+    if not args.dry_run:
+        _log("\nRode `obsidian reload`, espere ~3s, e depois o lint.")
+
+
+def _preview_sintese(s) -> None:
+    _log("\n--- prévia ---")
+    _log(f"  {s.panorama}")
+    for tema in s.temas:
+        _log(f"  · {tema.nome} ({len(tema.links)} link(s))")
+    for pergunta in s.perguntas:
+        _log(f"  ? {pergunta}")
+
+
 def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     ok = True
 
@@ -594,6 +737,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mig.add_argument("--limite", type=int, metavar="N", help="para depois de N notas")
     mig.set_defaults(func=cmd_migrar)
+
+    sint = sub.add_parser(
+        "sintese",
+        help="síntese de período com LLM: temas, conexões e perguntas em aberto",
+    )
+    sint.add_argument(
+        "--semana", metavar="QUAL",
+        help="atual (padrão) · anterior · AAAA-Www (ex.: 2026-W34)",
+    )
+    sint.add_argument("--mes", metavar="AAAA-MM", help="rollup mensal dos semanais")
+    sint.add_argument("--dry-run", action="store_true", help="não escreve no vault")
+    sint.add_argument(
+        "--force", action="store_true",
+        help="regenera mesmo se o material do período não mudou",
+    )
+    sint.set_defaults(func=cmd_sintese)
 
     doctor = sub.add_parser("doctor", help="checa configuração, vault e acesso ao Discord")
     doctor.set_defaults(func=cmd_doctor)

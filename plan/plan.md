@@ -18,7 +18,15 @@
 > - **5 views no Bases, não 4** (entrou "Descartados": revisar o que se descartou
 >   é trabalho legítimo).
 >
-> Fases 4–6 (síntese semanal, `/buscar`, ressurgimento) seguem pendentes.
+> **Fase 4 (síntese semanal) implementada em 2026-08-18**, via `dlb sintese`, com
+> backend `codex` por padrão — a classificação diária é o caminho crítico da
+> captura e não divide a janela de uso da Claude com uma chamada por semana. Sai
+> na **segunda** e não na sexta: na sexta a semana não fechou, e a nota nasceria
+> sem o fim de semana. O rollup mensal come as sínteses semanais, não os links
+> crus. Mora em `40_DIARIO/Semanal AAAA-Www.md` com `tipo: diario` — só a
+> convenção de nome foi emendada no ESQUEMA, não o vocabulário fechado.
+>
+> Fases 5–6 (`/buscar`, ressurgimento, MOC por tema) seguem pendentes.
 > Decidido para elas: busca com `claude -p` sobre o corpus inteiro em vez de
 > embeddings (Ollama não está instalado, e 70 notas ≈ 50KB cabem num contexto);
 > `/buscar` por polling de `?buscar` reusando `iter_messages()` em vez de gateway.

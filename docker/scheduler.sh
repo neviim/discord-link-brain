@@ -16,6 +16,9 @@
 #   DLB_RUN_ON_START   1 = roda uma vez ao subir (padrão 1)
 #   DLB_BACKFILL       1 = depois de cada sync, mastiga um pedaço do histórico
 #   DLB_BACKFILL_DAYS  dias de histórico por execução (padrão 2)
+#   DLB_SINTESE        1 = síntese semanal (padrão 0)
+#   DLB_SINTESE_DIA    dia da semana, 1=segunda … 7=domingo (padrão 1)
+#   DLB_SINTESE_MES    1 = no dia 1 do mês, também faz o rollup mensal
 set -eu
 
 SYNC_AT="${DLB_SYNC_AT:-}"
@@ -112,6 +115,37 @@ run_backfill() {
     [ "$rc" -eq 0 ] || log "backfill falhou (código $rc) — tenta de novo no próximo ciclo."
 }
 
+# A síntese sai na segunda, e não na sexta como se poderia esperar: na sexta a
+# semana ainda não fechou, e a nota nasceria sem os links do fim de semana — para
+# depois ser regenerada, gastando uma segunda chamada. Na segunda a semana
+# anterior está completa e a nota é final na primeira escrita.
+#
+# Não precisa de slot próprio no laço: `dlb sintese` guarda um hash do material
+# do período e sai em zero segundo se nada mudou. Nos quatro ciclos de 6h do dia,
+# só o primeiro gasta chamada de modelo.
+run_sintese() {
+    [ "${DLB_SINTESE:-0}" = "1" ] || return 0
+    [ "$(date +%u)" = "${DLB_SINTESE_DIA:-1}" ] || return 0
+
+    log "dlb sintese --semana anterior"
+    set +e
+    python -m dlb sintese --semana anterior
+    rc=$?
+    set -e
+    [ "$rc" -eq 0 ] || log "sintese falhou (código $rc) — tenta de novo no próximo ciclo."
+
+    # Rollup do mês que fechou, no primeiro dia do mês novo.
+    if [ "${DLB_SINTESE_MES:-0}" = "1" ] && [ "$(date +%d)" = "01" ]; then
+        mes=$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m 2>/dev/null || echo "")
+        if [ -n "$mes" ]; then
+            log "dlb sintese --mes ${mes}"
+            set +e
+            python -m dlb sintese --mes "$mes"
+            set -e
+        fi
+    fi
+}
+
 if [ -n "$INTERVAL" ]; then
     log "modo intervalo: a cada ${INTERVAL}s (fuso ${TZ:-?})"
 elif [ -n "$EVERY_HOURS" ]; then
@@ -123,6 +157,7 @@ fi
 if [ "$RUN_ON_START" = "1" ]; then
     run_sync
     run_backfill
+    run_sintese
 fi
 
 while true; do
@@ -137,4 +172,5 @@ while true; do
     nap "$wait_for"
     run_sync
     run_backfill
+    run_sintese
 done

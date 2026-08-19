@@ -88,6 +88,29 @@ if [[ "$LLM_BACKEND" == "claude-cli" ]]; then
     fi
 fi
 
+# Mesma história para o Codex, que é o backend padrão da síntese periódica. O
+# binário é ELF estático, então roda no container sem runtime nenhum.
+SINTESE_BACKEND="${SINTESE_BACKEND:-$(env_get SINTESE_BACKEND)}"
+SINTESE_BACKEND="${SINTESE_BACKEND:-codex}"
+
+if [[ "$SINTESE_BACKEND" == "codex" ]]; then
+    codex_bin="$(env_get CODEX_BIN)"
+    codex_bin="${codex_bin:-codex}"
+    if [[ "$codex_bin" != /* ]]; then
+        codex_bin="$(command -v "$codex_bin" 2>/dev/null || true)"
+    fi
+    if [[ -n "$codex_bin" && -x "$codex_bin" ]]; then
+        DLB_CODEX_BIN="$(readlink -f "$codex_bin")"
+        DLB_CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+        [[ -d "$DLB_CODEX_HOME" ]] \
+            || die "não achei $DLB_CODEX_HOME — rode \`codex\` uma vez no host"
+        export DLB_CODEX_BIN DLB_CODEX_HOME
+    else
+        info "aviso: SINTESE_BACKEND=codex mas não achei o binário do codex;"
+        info "       a síntese vai falhar dentro do container."
+    fi
+fi
+
 mkdir -p .state
 
 # nota: `exec` ignora funções do shell, então as chamadas abaixo usam `docker compose` direto.

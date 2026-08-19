@@ -36,15 +36,17 @@ execução.
 
 | Módulo | Linhas | Responsabilidade |
 |---|---|---|
-| `cli.py` | 614 | Orquestração: `sync`, `backfill`, `migrar`, `semana`, `doctor` |
-| `vault.py` | 817 | Escrita nas quatro camadas do vault e leitura das URLs já arquivadas |
+| `cli.py` | 774 | Orquestração: `sync`, `backfill`, `migrar`, `sintese`, `semana`, `doctor` |
+| `vault.py` | 1001 | Escrita nas quatro camadas do vault e leitura das URLs já arquivadas |
 | `enrich.py` | 204 | Descobrir do que a página trata (oEmbed, `og:`, texto do artigo) |
 | `extract.py` | 204 | Achar, normalizar, canonizar e deduplicar URLs |
-| `migrar.py` | 317 | Reconstrói nota atômica do que já está no vault, sem LLM |
-| `discord_client.py` | 166 | REST API do Discord: paginação, rate limit, reações |
-| `config.py` | 125 | Configuração a partir do ambiente e do `.env` |
+| `migrar.py` | 349 | Reconstrói nota atômica do que já está no vault, sem LLM |
+| `sintese.py` | 398 | Síntese de período: prompt, backends e a fronteira do modelo |
+| `corpus.py` | 195 | Lê `50_LINKS/` de volta como dado, e a semana ISO |
+| `discord_client.py` | 176 | REST API do Discord: paginação, rate limit, reações |
+| `config.py` | 156 | Configuração a partir do ambiente e do `.env` |
 | `frontmatter.py` | 104 | YAML no dialeto do vault, com a citação de escalar |
-| `models.py` | 80 | As estruturas que atravessam o pipeline + vocabulário fechado |
+| `models.py` | 90 | As estruturas que atravessam o pipeline + vocabulário fechado |
 | `state.py` | 46 | Os dois cursores por canal |
 
 ### `extract.py` — normalização

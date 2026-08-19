@@ -79,6 +79,24 @@ Lidas por `config.py`. Valem no host e dentro do container.
 | `anthropic` | SDK oficial + `ANTHROPIC_API_KEY`. Requer `pip install anthropic` |
 | `none` | Sem LLM: usa título e descrição da página. Bom para `--dry-run` e teste |
 
+### Síntese de período
+
+| Variável | Padrão | O quê |
+|---|---|---|
+| `SINTESE_BACKEND` | `codex` | `codex` · `claude-cli` · `anthropic` |
+| `CODEX_BIN` | `codex` | Caminho do binário do Codex CLI |
+| `SINTESE_MODEL` | — | Vazio usa o padrão do backend |
+| `SINTESE_TIMEOUT` | `900` | Segundos por chamada |
+
+O padrão é `codex` e não `claude-cli` **de propósito**: são duas assinaturas
+diferentes, e o `docker/scheduler.sh` já vive a tensão entre a grade de 6h e a
+janela de uso de 5h da Claude. A classificação diária é o gasto que não pode
+esperar; a síntese semanal é uma chamada por semana e pode sair de outra fila.
+
+O `codex exec` é chamado com `--output-schema`, o que faz o modelo devolver JSON
+válido sem cerca — mas a validação em `sintese.py` continua, porque a fronteira do
+LLM é porteiro obrigatório neste projeto, não confiança.
+
 ### Enriquecimento
 
 | Variável | Padrão | O quê |
@@ -151,6 +169,9 @@ Precedência: `INTERVAL` > `EVERY_HOURS` > `AT`.
 |---|---|---|
 | `DLB_BACKFILL` | `0` | Depois de cada sync, mastigar um pedaço do passado |
 | `DLB_BACKFILL_DAYS` | `2` | Dias de histórico por execução |
+| `DLB_SINTESE` | `0` | 1 = síntese semanal automática |
+| `DLB_SINTESE_DIA` | `1` | Dia da semana: 1=segunda … 7=domingo |
+| `DLB_SINTESE_MES` | `0` | 1 = no dia 1 do mês, também faz o rollup mensal |
 
 ### Caminhos do host (o wrapper resolve sozinho)
 

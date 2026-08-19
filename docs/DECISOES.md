@@ -335,9 +335,72 @@ os links voltam a ser o que a fonte diz.
 
 ---
 
+## A síntese periódica roda em outro backend que a classificação
+
+**Alternativa considerada:** usar `claude-cli` para tudo, como já era.
+
+O `docker/scheduler.sh` documenta no próprio arquivo a tensão entre a grade de 6h
+e a janela de uso de 5h da assinatura Claude. A classificação diária é o gasto que
+não pode esperar — ela é o caminho crítico da captura. A síntese é uma chamada por
+semana, e não competir por aquela janela é de graça.
+
+`SINTESE_BACKEND=codex` por padrão. O `codex exec --output-schema` tem uma
+vantagem técnica de brinde: o modelo devolve JSON válido sem cerca e sem
+tagarelice, então o parsing defensivo quase não trabalha. Quase — a validação
+continua, porque `id` fora da faixa e URL inventada não são problema de formato.
+
+Os runners ficaram em `sintese.py` em vez de compartilhados com `classify.py`:
+lá o `SYSTEM_PROMPT` está embutido na função, e parametrizá-lo quebraria os 27
+testes que trocam `_run_claude_cli` como global do módulo. Duplicação consciente
+de ~40 linhas de `subprocess`; quando aparecer o terceiro consumidor, é a hora de
+extrair um `llm.py`.
+
+**Desfazer custa:** uma linha de configuração (`SINTESE_BACKEND=claude-cli`).
+
+---
+
+## A síntese cita por `id`; o link quem monta somos nós
+
+**Alternativa considerada:** deixar o modelo escrever o markdown com as URLs.
+
+O payload que vai para o modelo **não tem a URL** — só `id`, título, resumo,
+por-que-importa e conceitos. Assim ele não tem como emitir um endereço, e todo
+link do texto final é montado a partir dos nossos dados. `id` fora da faixa é
+descartado em silêncio.
+
+Isso não é desconfiança de estilo: é a diferença entre "o prompt pede para não
+inventar link" e "inventar link é estruturalmente impossível". A primeira falha em
+silêncio e vira nota com URL que não existe.
+
+Na prática o modelo ainda escreveu "Links: 6, 7" no fim de uma frase, apesar da
+instrução — número interno não diz nada a quem lê a nota. Há uma limpeza para
+isso, e um teste.
+
+**Desfazer custa:** nada, mas não há por que: o caminho custa 5 linhas e fecha uma
+classe inteira de erro.
+
+---
+
+## Só o miolo entre as cercas é regenerado
+
+**Alternativa considerada:** reescrever a nota inteira a cada execução.
+
+A nota de síntese tem `## Minhas notas` e a cerca
+`<!-- dlb:sintese hash=… -->` … `<!-- /dlb:sintese -->`. Regenerar troca só o que
+está entre as cercas; o que você escrever fora sobrevive, mesmo princípio do
+`SECTION_MARK` no diário. Nota que alguém escreveu à mão, sem a cerca, **recebe** o
+bloco em vez de ser sobrescrita.
+
+O `hash` na cerca cobre URL e resumo do período. Sem ele, o agendador gastaria uma
+chamada de 30–60s por execução para regenerar uma semana que não mudou.
+
+**Desfazer custa:** nada; `--force` ignora o hash.
+
+---
+
 ## O que ainda não foi resolvido
 
-- **`cli.py` sem teste** (615 linhas, 0%). Testá-lo exige encenar Discord, LLM e
+- **`cli.py` sem teste** (774 linhas, 0%). Testá-lo exige encenar Discord, LLM e
   vault ao mesmo tempo. Boa parte do risco está coberta pelas peças embaixo, mas
   a orquestração em si não está.
 - **Cloudflare e X/Twitter** continuam bloqueando a leitura. O link entra com

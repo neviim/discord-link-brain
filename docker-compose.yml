@@ -34,6 +34,7 @@ services:
       OBSIDIAN_VAULT: /vault
       TZ: ${TIMEZONE:-America/Sao_Paulo}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
+      CODEX_HOME: /home/dlb/.codex
       # Grade de 6 em 6 horas ancorada na meia-noite: 00:00, 06:00, 12:00, 18:00.
       DLB_SYNC_EVERY_HOURS: ${DLB_SYNC_EVERY_HOURS:-6}
       DLB_SYNC_AT: ${DLB_SYNC_AT:-}
@@ -45,6 +46,9 @@ services:
       # ligue quando quiser que o passado seja mastigado sozinho.
       DLB_BACKFILL: ${DLB_BACKFILL:-0}
       DLB_BACKFILL_DAYS: ${DLB_BACKFILL_DAYS:-2}
+      DLB_SINTESE: ${DLB_SINTESE:-0}
+      DLB_SINTESE_DIA: ${DLB_SINTESE_DIA:-1}
+      DLB_SINTESE_MES: ${DLB_SINTESE_MES:-0}
     volumes:
       - ${DLB_HOST_VAULT:?rode ./dlb.sh, ou exporte DLB_HOST_VAULT com o caminho absoluto do vault}:/vault
       - ./.state:/app/.state
@@ -52,6 +56,8 @@ services:
       # não expor isso, use LLM_BACKEND=anthropic (ou none) e comente as duas.
       - ${DLB_CLAUDE_BIN:-./docker/placeholder/claude}:/usr/local/bin/claude:ro
       - ${DLB_CLAUDE_HOME:-./docker/placeholder/home}:/home/dlb/.claude
+      - ${DLB_CODEX_BIN:-./docker/placeholder/claude}:/usr/local/bin/codex:ro
+      - ${DLB_CODEX_HOME:-./docker/placeholder/home}:/home/dlb/.codex
     logging:
       driver: json-file
       options:
@@ -79,11 +85,14 @@ services:
       OBSIDIAN_VAULT: /vault
       TZ: ${TIMEZONE:-America/Sao_Paulo}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
+      CODEX_HOME: /home/dlb/.codex
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - .:/app
       - ${DLB_DEV_VAULT:?rode ./dlb.sh, ou exporte DLB_DEV_VAULT}:/vault:${DLB_DEV_VAULT_MODE:-ro}
       - ${DLB_CLAUDE_BIN:-./docker/placeholder/claude}:/usr/local/bin/claude:ro
       - ${DLB_CLAUDE_HOME:-./docker/placeholder/home}:/home/dlb/.claude
+      - ${DLB_CODEX_BIN:-./docker/placeholder/claude}:/usr/local/bin/codex:ro
+      - ${DLB_CODEX_HOME:-./docker/placeholder/home}:/home/dlb/.codex
     stdin_open: true
     tty: true

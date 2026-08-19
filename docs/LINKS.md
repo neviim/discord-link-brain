@@ -1,6 +1,7 @@
 # A camada `50_LINKS/` — nota atômica por link
 
-Guia de uso dos recursos acrescentados em 2026-08-18. Se você só quer saber
+Guia de uso dos recursos acrescentados em 2026-08-18 — a camada de nota
+atômica e a síntese periódica. Se você só quer saber
 **qual comando rodar**, pule para a [referência rápida](#referência-rápida).
 
 ## O que mudou, em uma frase
@@ -219,6 +220,60 @@ e nada é escrito em `50_LINKS/`. O que já existe não é apagado.
 
 ---
 
+## Passo 6 — Síntese periódica
+
+Os cinco passos acima organizam o acervo. Este é o que **converte fluxo em
+conhecimento**: uma chamada de LLM por período que lê os resumos da semana e
+escreve o que ela foi — temas recorrentes, o que se conecta com o que, e 2 a 3
+perguntas em aberto.
+
+```bash
+python3 -m dlb sintese                       # a semana corrente
+python3 -m dlb sintese --semana anterior     # a que acabou (o uso de sexta)
+python3 -m dlb sintese --semana 2026-W34     # uma específica
+python3 -m dlb sintese --mes 2026-08         # rollup dos semanais do mês
+python3 -m dlb sintese --dry-run             # chama o modelo, não escreve
+```
+
+Escreve `40_DIARIO/Semanal 2026-W34.md` (ou `Mensal 2026-08.md`) com
+`tipo: diario` — o vocabulário fechado do vault não foi aberto para isto, só a
+convenção de nome de arquivo. Semana em curso nasce `crescendo` e vira `maduro`
+quando passa. A nota se registra sozinha numa seção `## Sínteses de período` do MOC.
+
+**Não é o `dlb semana`.** Aquele concatena o que já está escrito e imprime; nunca
+gasta LLM e nunca toca o vault. Este gasta uma chamada e escreve uma nota.
+
+### Três propriedades que valem saber
+
+**Não regenera o que não mudou.** A cerca guarda um hash do material do período.
+Rodar de novo sem `--force` sai em zero segundo em vez de gastar uma chamada de
+30–60s para produzir o mesmo texto.
+
+**O que você escrever fora da cerca sobrevive.** Só o miolo entre
+`<!-- dlb:sintese … -->` e `<!-- /dlb:sintese -->` é reescrito. Abaixo de
+`## Minhas notas` é seu, como na nota de link.
+
+**O modelo não escreve link.** O payload não leva a URL — só `id`, título e
+resumo. Todo wikilink do texto final é montado a partir dos nossos dados, e `id`
+que não existe é descartado. Não é o prompt pedindo para não inventar: é inventar
+ser impossível.
+
+### O rollup mensal come as semanas, não os links
+
+`--mes 2026-08` alimenta o modelo com as **sínteses semanais** daquele mês, não
+com os 15 links crus. É isso que faz ler o mês valer mais que reler trinta dias —
+o texto sai no nível acima, comparando semanas ("W33 abriu a pista; W34 retomou em
+escala maior"). Semana sem síntese é reportada e pulada, nunca inventada.
+
+### Por que o backend padrão é o Codex
+
+`SINTESE_BACKEND=codex`, e não o `claude-cli` que classifica. São assinaturas
+diferentes, e o `docker/scheduler.sh` já vive a tensão entre a grade de 6h e a
+janela de uso de 5h da Claude. A classificação diária é o caminho crítico da
+captura; a síntese é uma chamada por semana e pode sair de outra fila.
+
+Trocar é uma linha: `SINTESE_BACKEND=claude-cli` ou `anthropic`.
+
 ## Manutenção e reparo
 
 ### Link no diário que não tem nota
@@ -280,6 +335,12 @@ python3 -m dlb migrar --limite 10        # fatia
 ./dlb.sh dev migrar --dry-run
 ./dlb.sh dev --rw migrar
 
+# síntese de período
+python3 -m dlb sintese                     # semana corrente
+python3 -m dlb sintese --semana anterior   # a que acabou
+python3 -m dlb sintese --mes 2026-08       # rollup mensal
+python3 -m dlb sintese --force             # regenera mesmo sem mudança
+
 # painéis (exige o app Obsidian aberto)
 obsidian reload && sleep 3
 obsidian base:query path="30_MOC/Links.base" view=Inbox format=md
@@ -292,6 +353,9 @@ obsidian unresolved verbose && obsidian deadends && obsidian orphans
 |---|---|---|
 | `LINK_NOTES` | `1` | Escrever nota em `50_LINKS/` |
 | `DISCORD_GUILD_IDS` | — | `id_canal:id_servidor`, só o `migrar` usa |
+| `SINTESE_BACKEND` | `codex` | `codex` · `claude-cli` · `anthropic` |
+| `CODEX_BIN` | `codex` | Binário do Codex CLI |
+| `SINTESE_TIMEOUT` | `900` | Segundos por chamada |
 
 ---
 

@@ -5,7 +5,7 @@ para rodar. Aqui está o resto, separado por **o que você está tentando fazer*
 
 | Quero… | Leia |
 |---|---|
-| **usar a nota atômica por link, triar, migrar o histórico** | **[LINKS.md](LINKS.md)** |
+| **usar a nota atômica, triar, migrar, gerar a síntese semanal** | **[LINKS.md](LINKS.md)** |
 | entender como funciona por dentro | [ARQUITETURA.md](ARQUITETURA.md) |
 | configurar o Discord, o vault, o LLM | [CONFIGURACAO.md](CONFIGURACAO.md) |
 | rodar, agendar, recuperar histórico, resolver problema | [OPERACAO.md](OPERACAO.md) |

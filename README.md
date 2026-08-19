@@ -19,7 +19,7 @@ Discord  →  extrai links  →  lê a página   →  LLM classifica  →  vault
 
 | Quero… | Leia |
 |---|---|
-| usar a nota atômica por link, triar, migrar o histórico | [docs/LINKS.md](docs/LINKS.md) |
+| usar a nota atômica, triar, migrar, gerar a síntese semanal | [docs/LINKS.md](docs/LINKS.md) |
 | entender como funciona por dentro | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) |
 | configurar Discord, vault e LLM | [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md) |
 | rodar, agendar, resolver problema | [docs/OPERACAO.md](docs/OPERACAO.md) |
@@ -126,6 +126,10 @@ python3 -m dlb sync --day 2026-08-15
 # cria a nota atômica dos links já capturados — sem LLM, sem rede
 python3 -m dlb migrar --dry-run
 python3 -m dlb migrar
+
+# síntese do período: temas recorrentes, conexões, perguntas em aberto
+python3 -m dlb sintese --semana anterior
+python3 -m dlb sintese --mes 2026-08
 
 # ver o que faria sem escrever nada
 python3 -m dlb sync --since 3 --dry-run
