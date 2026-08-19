@@ -879,9 +879,13 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
         for channel_id in cfg.channel_ids:
             try:
                 msg = client.post_message(channel_id, "teste do dlb — pode ignorar")
-                _log(f"envio {channel_id}   OK — postou e vai apagar")
+                # O relato vem depois do apagar: dizer "OK" antes deixaria duas
+                # linhas se contradizendo quando o delete falha.
                 if msg.get("id"):
                     client.delete_message(channel_id, msg["id"])
+                    _log(f"envio {channel_id}   OK — postou e apagou")
+                else:
+                    _log(f"envio {channel_id}   OK — postou (sem id, não apaguei)")
             except DiscordError as exc:
                 _log(f"envio {channel_id}   FALHA: {exc}")
                 ok = False
