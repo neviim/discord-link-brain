@@ -169,6 +169,42 @@ relações que você acrescentou e tudo abaixo de `## Minhas notas`. Não duplic
 referência no diário. As notas de `10_FONTES/` seguem com o valor original — a fonte
 não se corrige, e o link certo é derivável.
 
+## Mudei o `.env` — como aplicar no prod
+
+**`restart` não serve.** O `env_file` do compose é aplicado quando o container é
+**criado**; `restart` só reinicia o processo dentro do container que já existe, com
+o ambiente antigo. A falha é silenciosa: nada dá erro, e o container segue com o
+valor velho.
+
+```bash
+./dlb.sh prod up      # recria os containers quando a configuração mudou
+```
+
+Como conferir que pegou, em vez de torcer:
+
+```bash
+docker exec dlb-prod printenv DLB_SINTESE DLB_RESSURGIR
+docker exec dlb-responder printenv RESPONDER_CHANNEL_IDS
+./dlb.sh prod logs responder | head -2
+```
+
+Exceção que confunde: as variáveis lidas pelo **Python** (`LINK_NOTES`,
+`SINTESE_BACKEND`, `RESSURGIR_*`, `BUSCA_*`…) valem na próxima execução do comando,
+porque `Config.from_env()` relê o `.env` a cada vez. As do **agendador** (`DLB_*`)
+só valem com container recriado. Por isso `dlb doctor` pode mostrar o valor novo
+enquanto o container ainda usa o antigo.
+
+### Trocou de canal? Confira a permissão antes
+
+Canal novo não herda permissão de canal antigo. Antes de recriar:
+
+```bash
+python3 -m dlb doctor --testar-envio    # posta e apaga no canal de captura
+```
+
+Para os canais do responder e do ressurgimento, o `--testar-envio` ainda não cobre
+— confira postando um `?buscar` de teste e olhando `./dlb.sh prod logs responder`.
+
 ## Apanhado da semana
 
 ```bash
