@@ -7,6 +7,7 @@ errado. Por isso as invariantes ficam presas em teste.
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -253,3 +254,42 @@ class TestConfigDaCamadaDeLinks(ConfigCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEnvExampleNaoFicaParaTras(unittest.TestCase):
+    """Toda variável que o código lê tem que estar no `.env.example`.
+
+    Este teste existe porque o buraco aconteceu: `RESSURGIR_CANAL` foi
+    implementada, documentada no CONFIGURACAO.md e esquecida no exemplo — e quem
+    foi procurar não achou. Documentação some do radar; teste não.
+    """
+
+    # Postas pelo docker-compose, não por quem edita o .env. Estarem no exemplo
+    # sugeriria que você deve defini-las, e você não deve.
+    INTERNAS = {"DLB_MODE", "DLB_HEARTBEAT", "DLB_HEARTBEAT_RESPONDER"}
+
+    def test_toda_variavel_lida_esta_no_exemplo(self):
+        raiz = Path(__file__).resolve().parent.parent
+        codigo = (raiz / "dlb" / "config.py").read_text(encoding="utf-8")
+        lidas = set(re.findall(r'os\.environ\.get\(\s*"([A-Z][A-Z0-9_]*)"', codigo))
+        exemplo = set(re.findall(
+            r"^\s*#?\s*([A-Z][A-Z0-9_]*)=",
+            (raiz / ".env.example").read_text(encoding="utf-8"),
+            re.M,
+        ))
+        faltando = sorted(lidas - exemplo - self.INTERNAS)
+        self.assertEqual(
+            faltando, [],
+            f"variáveis lidas pelo código e ausentes do .env.example: {faltando}",
+        )
+
+    def test_toda_variavel_lida_esta_documentada(self):
+        raiz = Path(__file__).resolve().parent.parent
+        codigo = (raiz / "dlb" / "config.py").read_text(encoding="utf-8")
+        lidas = set(re.findall(r'os\.environ\.get\(\s*"([A-Z][A-Z0-9_]*)"', codigo))
+        doc = (raiz / "docs" / "CONFIGURACAO.md").read_text(encoding="utf-8")
+        faltando = sorted(v for v in lidas - self.INTERNAS if v not in doc)
+        self.assertEqual(
+            faltando, [],
+            f"variáveis sem menção em docs/CONFIGURACAO.md: {faltando}",
+        )

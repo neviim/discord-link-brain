@@ -205,6 +205,17 @@ O link dentro da mensagem de ressurgimento **não** volta para a captura: mensag
 bot é descartada por padrão, e mesmo com `--include-bots` a URL já está em
 `10_FONTES` e o dedup a barra. Há teste para as duas barreiras.
 
+#### Variáveis internas do container
+
+`DLB_MODE`, `DLB_HEARTBEAT` e `DLB_HEARTBEAT_RESPONDER` são postas pelo
+`docker-compose.yml`, não por quem edita o `.env` — por isso ficam fora do
+`.env.example`. Defini-las à mão só faz sentido rodando `python -m dlb responder`
+solto no host e querendo um arquivo de heartbeat.
+
+Há um teste (`TestEnvExampleNaoFicaParaTras`) que falha se uma variável nova for
+lida pelo código sem aparecer no `.env.example` e aqui. Documentação some do radar;
+teste não.
+
 ### Marcação no Discord
 
 | Variável | Padrão | O quê |
