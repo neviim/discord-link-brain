@@ -398,9 +398,189 @@ chamada de 30–60s por execução para regenerar uma semana que não mudou.
 
 ---
 
+## Pseudo-comando por polling, não slash command
+
+**Alternativas consideradas:** gateway e endpoint de Interactions.
+
+**Gateway** exigiria uma biblioteca de websocket — `discord.py` traz `aiohttp`,
+`multidict`, `yarl`, `frozenlist`, `aiosignal`, `attrs` para um projeto cujo
+runtime inteiro é `requests` + `PyYAML`. E exigiria um processo que mantém conexão
+com estado: heartbeat, token de resume, reconexão. É o oposto do "roda um programa
+curto, confere o código de saída, sai" que o `scheduler.sh` assume — e torna o
+healthcheck por heartbeat sem sentido, porque o processo pode estar de pé com a
+conexão morta em silêncio.
+
+**Interactions por HTTP** exigiria URL pública com TLS, verificação ed25519
+(PyNaCl, extensão em C), um servidor ouvindo, e registro de comando. O custo
+decisivo não é a dependência: **hoje esta máquina só faz conexão de saída, e isso
+abriria a primeira porta de entrada na máquina que guarda o seu `~/.claude`.**
+
+Polling reaproveita `iter_messages()` inteiro — paginação, 429, 5xx já resolvidos e
+testados — e o mesmo idioma de idempotência que o projeto já usa: a reação do
+próprio bot como segunda barreira, com `me: true` para reação de humano não contar.
+Zero dependência nova, zero superfície de entrada.
+
+O custo é honesto e pequeno: latência de um ciclo, e não é slash command na UI. A
+60s, e com a chamada de modelo levando 30-60s, **o polling não é o gargalo** — o que
+elimina a principal vantagem das outras duas.
+
+**Desfazer custa:** uma dependência de websocket e um segundo processo sempre de
+pé; para Interactions, também uma entrada pública que hoje não existe.
+
+---
+
+## Falar é opt-in, e as marcas são dois vocabulários
+
+`DISCORD_POST_ENABLED=0` por padrão. A assimetria justifica: escrita no vault é
+idempotente e corrigível reexecutando; mensagem que outro humano leu, não é. A
+permissão vai de 66624 para 68672 (soma *Enviar mensagens*).
+
+*Enviar links incorporados* ficou de fora de propósito: toda URL sai como `<url>`,
+que suprime a prévia. Três links viriam como parede de cartões, e a permissão a
+menos é de graça.
+
+**E as marcas do responder são um conjunto separado** de `cfg.marcas`:
+
+    cfg.marcas            = (✅, 📚)      "o sync arquivou"
+    cfg.marcas_responder  = (💬, ⏳, ❌)   "o responder resolveu"
+
+Se se misturassem, uma pergunta que contivesse um link seria pulada pelo `sync`
+para sempre, e uma mensagem legitimamente arquivada não poderia mais ser
+perguntada. A colisão é silenciosa e está a um typo de distância, então
+`validar_marcas()` levanta erro na configuração e o `doctor` mostra.
+
+`allowed_mentions: {"parse": []}` em todo POST: o bot **não consegue** mencionar
+ninguém, nem `@everyone`, mesmo que a pergunta de alguém contenha o texto. É mais
+barato desligar a capacidade do que filtrar conteúdo.
+
+**Desfazer custa:** uma linha de configuração.
+
+---
+
+## Busca sem embeddings, e o gatilho medido para mudar
+
+**Alternativa considerada:** Ollama + `nomic-embed-text` + cosseno.
+
+Os números: 70 notas somam ~33 mil caracteres, uns 12 mil tokens. O corpus
+**inteiro** cabe num prompt com folga de 10×, e mandar tudo tem recall
+estritamente melhor que top-k por cosseno — não existe `k` para errar, nem limiar
+de similaridade, nem chunk.
+
+Embeddings custariam: instalar o Ollama (não está na máquina), baixar 275 MB, abrir
+a rede do container, mais um cache com chave de invalidação, um reindexar e um GC —
+para **descartar** 62 de 70 documentos que já caberiam. É um sistema pior, não
+menor.
+
+O ranqueamento léxico existe mesmo assim, e ordena para o corte por orçamento.
+Hoje o corte nunca dispara; com 300+ notas a degradação é gradual e o caminho de
+código é o mesmo.
+
+**O gatilho é um número na tela, não julgamento:** `dlb doctor` imprime o corpus
+contra `BUSCA_MAX_CHARS` (hoje 28%). Quando passar de 100%, ou quando a resposta
+começar a não achar coisa que você sabe que está lá, escreva
+`_ranquear_embeddings` com a mesma assinatura e acrescente um `elif`.
+
+**Desfazer custa:** nada hoje — o ponto de troca já existe, e um ranqueador novo é
+uma função mais um `elif`.
+
+---
+
+## O ressurgimento guarda estado em `.state/`, e isso não contradiz a decisão do SQLite
+
+**Alternativas consideradas:** um campo no frontmatter da nota, e deduzir do
+histórico do canal.
+
+A decisão contra o índice em SQLite recusou uma **segunda autoridade para um fato
+que o vault já possui** ("esta URL está arquivada?"): podia divergir, e a
+divergência dava resposta *errada*. "Que links eu já ressurgi" é um fato sobre o
+qual o vault não tem opinião nenhuma — não há de que divergir. É a mesma categoria
+dos dois cursores, que a ARQUITETURA já lista como estado do pipeline. E o pior
+caso de perder o arquivo é **um** link repetido, que não é nem erro.
+
+Campo no frontmatter foi rejeitado por escrever no vault para registrar um não-fato,
+e por sujar o Obsidian Sync a cada execução. Deduzir do canal seria reparsear as
+próprias mensagens antigas — histórico de Discord não é índice consultável.
+
+A semente do sorteio inclui o dia, então rodar duas vezes no mesmo dia escolhe os
+mesmos links: idempotência de graça. Mas o histórico continua, porque semente
+determinística sozinha não dá carência.
+
+**Dois filtros que não são arbitrários:** `triagem: descartado` sai (você já disse
+que não serviu), e link sem `porque_importa` fica para o fim — medido, esse campo é
+vazio exatamente nos 16 links que o modelo não conseguiu descrever, e ressurgir
+"conteúdo não identificado" é ruído, não memória. É preferência e não corte: se
+sobrar só isso, melhor lembrar de algo do que de nada.
+
+**Desfazer custa:** apagar `.state/ressurgir.json`.
+
+---
+
+## `temas` relata; não cria MOC
+
+**Alternativa considerada:** criar o MOC quando o conceito passa do limiar.
+
+Reafirma a decisão de não criar página em `20_WIKI/`, por um motivo novo: uma pasta
+cheia de MOC vazio é **pior** que uma pasta sem MOC nenhum. O `MOC - Índice` do
+vault diz isso com outras palavras — "MOC não nasce, emerge". O comando emite um
+bloco pronto para colar; a prosa é a parte que não dá para automatizar sem perder o
+ponto.
+
+Três reinterpretações do `plan/plan.md`, que enquadrava isto por contagem de tag:
+
+- **Tag de assunto é proibida** pelo vault. O sinal real são os `conceitos`, que o
+  pipeline já emite como `[[X]]` ou `X *(candidato)*`.
+- **O limiar é 8, não 15.** É o número do próprio `MOC - Índice`. Onde os dois
+  discordam, vale o do vault.
+- **Os líderes brutos são plataformas, não temas.** Medido: Instagram 7, YouTube 6,
+  contra n8n 4 — onde o link mora, não do que trata. Sem stoplist o relatório é
+  ruído. O descartado aparece no relatório, nunca sai em silêncio.
+
+Plural é colapsado **observando, não adivinhando**: `X` junta com `Xs` só quando as
+duas formas aparecem no acervo. Cortar `s` por tamanho de palavra fazia `SaaS` virar
+`saa` — foi um teste que pegou.
+
+**Desfazer custa:** nada. O caminho contrário custaria limpar MOCs vazios à mão.
+
+---
+
+## Dois containers: um lento e um rápido
+
+**Alternativa considerada:** um laço só, despachando o prazo mais próximo.
+
+O agendador roda de 6 em 6 horas e contém chamadas de LLM de 30-60s mais buscas de
+página de até 10s cada. Num laço único, a latência de uma resposta a `?buscar`
+ficaria **ilimitada** — uma pergunta às 12:00:05 poderia esperar um backfill
+inteiro. E latência limitada é a feature.
+
+É seguro porque os dois processos escrevem arquivos **disjuntos** em `.state/`:
+
+| Arquivo | Escrito por |
+|---|---|
+| `<canal>.json` | `sync`, `backfill` |
+| `responder-<canal>.json` | `responder` |
+| `ressurgir.json` | `ressurgir` |
+| `heartbeat` | o agendador |
+| `heartbeat-responder` | o responder |
+
+Nenhum arquivo tem dois escritores — é esse o invariante. Por isso o cursor do
+responder é **arquivo separado** e não um campo a mais em `ChannelState`: um campo
+criaria read-modify-write concorrente com perda silenciosa. E o `Store.save` passou
+a ser atômico (`tmp` + `os.replace`), porque `write_text` deixa uma janela de
+arquivo truncado que o `load` interpretaria como "recomece do zero".
+
+O ressurgimento fica no laço lento justamente porque **pode** esperar.
+
+O healthcheck do responder não precisou de código: o `HEALTHCHECK` embutido já lê
+`DLB_HEARTBEAT` e `DLB_HEALTH_TOLERANCE`, e o compose só aponta para outro arquivo
+com outra tolerância.
+
+**Desfazer custa:** juntar os laços e aceitar latência ilimitada.
+
+---
+
 ## O que ainda não foi resolvido
 
-- **`cli.py` sem teste** (774 linhas, 0%). Testá-lo exige encenar Discord, LLM e
+- **`cli.py` sem teste** (1029 linhas, 0%). Testá-lo exige encenar Discord, LLM e
   vault ao mesmo tempo. Boa parte do risco está coberta pelas peças embaixo, mas
   a orquestração em si não está.
 - **Cloudflare e X/Twitter** continuam bloqueando a leitura. O link entra com

@@ -49,6 +49,7 @@ services:
       DLB_SINTESE: ${DLB_SINTESE:-0}
       DLB_SINTESE_DIA: ${DLB_SINTESE_DIA:-1}
       DLB_SINTESE_MES: ${DLB_SINTESE_MES:-0}
+      DLB_RESSURGIR: ${DLB_RESSURGIR:-0}
     volumes:
       - ${DLB_HOST_VAULT:?rode ./dlb.sh, ou exporte DLB_HOST_VAULT com o caminho absoluto do vault}:/vault
       - ./.state:/app/.state
@@ -68,6 +69,48 @@ services:
   # Efêmero e falador. O código vem do host por bind mount: editou, rodou.
   # O vault entra somente-leitura por padrão — `--dry-run` funciona, escrita
   # acidental no seu segundo cérebro não.
+  # O responder é um laço de 60s; o agendador é de 6h com chamadas de LLM de 60s
+  # dentro. Juntos, a latência de uma resposta ficaria ilimitada — e latência
+  # limitada é a feature inteira. Separados porque escrevem arquivos DISJUNTOS em
+  # .state/: `responder-<canal>.json` é só dele.
+  responder:
+    profiles: ["prod"]
+    container_name: dlb-responder
+    image: discord-link-brain:prod
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+      args:
+        UID: ${DLB_UID:-1000}
+        GID: ${DLB_GID:-1000}
+    user: "${DLB_UID:-1000}:${DLB_GID:-1000}"
+    restart: unless-stopped
+    command: responder
+    env_file: .env
+    environment:
+      OBSIDIAN_VAULT: /vault
+      TZ: ${TIMEZONE:-America/Sao_Paulo}
+      CLAUDE_CONFIG_DIR: /home/dlb/.claude
+      CODEX_HOME: /home/dlb/.codex
+      DLB_MODE: responder
+      # O HEALTHCHECK embutido já lê estas duas — zero código novo.
+      DLB_HEARTBEAT: /app/.state/heartbeat-responder
+      DLB_HEALTH_TOLERANCE: ${DLB_RESPONDER_HEALTH_TOLERANCE:-300}
+      RESPONDER_INTERVALO: ${RESPONDER_INTERVALO:-60}
+    volumes:
+      - ${DLB_HOST_VAULT:?rode ./dlb.sh, ou exporte DLB_HOST_VAULT}:/vault:ro
+      - ./.state:/app/.state
+      - ${DLB_CLAUDE_BIN:-./docker/placeholder/claude}:/usr/local/bin/claude:ro
+      - ${DLB_CLAUDE_HOME:-./docker/placeholder/home}:/home/dlb/.claude
+      - ${DLB_CODEX_BIN:-./docker/placeholder/claude}:/usr/local/bin/codex:ro
+      - ${DLB_CODEX_HOME:-./docker/placeholder/home}:/home/dlb/.codex
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
   dev:
     profiles: ["dev"]
     build:

@@ -12,6 +12,10 @@ set -eu
 HEARTBEAT="${DLB_HEARTBEAT:-/app/.state/heartbeat}"
 
 case "${1:-}" in
+    responder)
+        # Laço próprio, rápido (60s), num serviço separado do agendador lento.
+        exec python -m dlb responder
+        ;;
     scheduler)
         exec scheduler.sh
         ;;

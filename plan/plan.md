@@ -26,7 +26,19 @@
 > crus. Mora em `40_DIARIO/Semanal AAAA-Www.md` com `tipo: diario` — só a
 > convenção de nome foi emendada no ESQUEMA, não o vocabulário fechado.
 >
-> Fases 5–6 (`/buscar`, ressurgimento, MOC por tema) seguem pendentes.
+> **Fases 5 e 6 implementadas em 2026-08-18.** `dlb buscar` / `?buscar` no canal
+> (polling, não slash command — gateway traria dependência de websocket e
+> Interactions abriria porta de entrada na máquina), `dlb ressurgir` (sem chamada de
+> modelo) e `dlb temas` (relatório, nunca MOC automático). Busca sem embeddings: o
+> corpus inteiro cabe num prompt, e `dlb doctor` mostra o quanto do orçamento está
+> em uso — 28% hoje.
+>
+> Reinterpretações necessárias: o limiar de tema é **8** (número do `MOC - Índice`
+> do vault) e não 15; e conta-se `conceitos`, não tag de assunto, que o vault
+> proíbe. Os líderes brutos eram plataformas (Instagram 7, YouTube 6), então há
+> stoplist com os descartados visíveis.
+>
+> Todas as seis fases do plano estão implementadas.
 > Decidido para elas: busca com `claude -p` sobre o corpus inteiro em vez de
 > embeddings (Ollama não está instalado, e 70 notas ≈ 50KB cabem num contexto);
 > `/buscar` por polling de `?buscar` reusando `iter_messages()` em vez de gateway.

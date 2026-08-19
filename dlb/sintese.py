@@ -195,12 +195,18 @@ def hash_fonte(entradas: list[LinkEntry]) -> str:
 # ------------------------------------------------------------------ backends
 
 
-def _run_codex(cfg: Config, prompt: str, system: str) -> str:
-    """`codex exec` com schema de saída. Sem sandbox de escrita, sem sessão."""
+def _run_codex(
+    cfg: Config, prompt: str, system: str, schema: dict | None = None
+) -> str:
+    """`codex exec` com schema de saída. Sem sandbox de escrita, sem sessão.
+
+    `schema` é parâmetro porque a busca usa outra forma de resposta e reaproveita
+    este runner — a mecânica do subprocess é a mesma, o contrato de saída não.
+    """
     with tempfile.TemporaryDirectory() as tmp:
-        schema = Path(tmp) / "schema.json"
+        arquivo = Path(tmp) / "schema.json"
         saida = Path(tmp) / "saida.txt"
-        schema.write_text(json.dumps(SCHEMA), encoding="utf-8")
+        arquivo.write_text(json.dumps(schema or SCHEMA), encoding="utf-8")
 
         cmd = [
             cfg.codex_bin,
@@ -209,7 +215,7 @@ def _run_codex(cfg: Config, prompt: str, system: str) -> str:
             "--skip-git-repo-check",  # o container roda fora de repositório
             "-s", "read-only",        # é geração de texto; não executa nada
             "--color", "never",
-            "--output-schema", str(schema),
+            "--output-schema", str(arquivo),
             "-o", str(saida),
         ]
         if cfg.sintese_model:

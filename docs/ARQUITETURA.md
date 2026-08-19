@@ -36,18 +36,22 @@ execução.
 
 | Módulo | Linhas | Responsabilidade |
 |---|---|---|
-| `cli.py` | 774 | Orquestração: `sync`, `backfill`, `migrar`, `sintese`, `semana`, `doctor` |
+| `cli.py` | 1029 | Orquestração dos 9 comandos (`sync` … `temas`) |
 | `vault.py` | 1001 | Escrita nas quatro camadas do vault e leitura das URLs já arquivadas |
 | `enrich.py` | 204 | Descobrir do que a página trata (oEmbed, `og:`, texto do artigo) |
 | `extract.py` | 204 | Achar, normalizar, canonizar e deduplicar URLs |
 | `migrar.py` | 349 | Reconstrói nota atômica do que já está no vault, sem LLM |
-| `sintese.py` | 398 | Síntese de período: prompt, backends e a fronteira do modelo |
+| `sintese.py` | 404 | Síntese de período: prompt, backends e a fronteira do modelo |
 | `corpus.py` | 195 | Lê `50_LINKS/` de volta como dado, e a semana ISO |
-| `discord_client.py` | 176 | REST API do Discord: paginação, rate limit, reações |
-| `config.py` | 156 | Configuração a partir do ambiente e do `.env` |
+| `temas.py` | 267 | Conta conceitos e relata o que virou tema. Não cria nada |
+| `ressurgir.py` | 140 | Escolhe e formata links antigos. Sem chamada de modelo |
+| `responder.py` | 167 | O laço que vigia o canal e responde `?buscar` |
+| `busca.py` | 265 | Responde pergunta a partir do acervo: ranking léxico + LLM |
+| `discord_client.py` | 284 | REST API do Discord: paginação, rate limit, reações, postar e apagar |
+| `config.py` | 245 | Configuração a partir do ambiente e do `.env` |
 | `frontmatter.py` | 104 | YAML no dialeto do vault, com a citação de escalar |
 | `models.py` | 90 | As estruturas que atravessam o pipeline + vocabulário fechado |
-| `state.py` | 46 | Os dois cursores por canal |
+| `state.py` | 72 | Os cursores por canal, em arquivos sem escritor duplicado |
 
 ### `extract.py` — normalização
 

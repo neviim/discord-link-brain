@@ -19,6 +19,7 @@
 #   DLB_SINTESE        1 = síntese semanal (padrão 0)
 #   DLB_SINTESE_DIA    dia da semana, 1=segunda … 7=domingo (padrão 1)
 #   DLB_SINTESE_MES    1 = no dia 1 do mês, também faz o rollup mensal
+#   DLB_RESSURGIR      1 = posta links antigos uma vez por dia
 set -eu
 
 SYNC_AT="${DLB_SYNC_AT:-}"
@@ -146,6 +147,18 @@ run_sintese() {
     fi
 }
 
+# Uma vez por dia, e sem slot próprio: o `dlb ressurgir` guarda a última execução
+# e sai na hora se já rodou hoje. Nos quatro ciclos de 6h, só o primeiro posta.
+run_ressurgir() {
+    [ "${DLB_RESSURGIR:-0}" = "1" ] || return 0
+    log "dlb ressurgir"
+    set +e
+    python -m dlb ressurgir
+    rc=$?
+    set -e
+    [ "$rc" -eq 0 ] || log "ressurgir falhou (código $rc) — tenta de novo no próximo ciclo."
+}
+
 if [ -n "$INTERVAL" ]; then
     log "modo intervalo: a cada ${INTERVAL}s (fuso ${TZ:-?})"
 elif [ -n "$EVERY_HOURS" ]; then
@@ -158,6 +171,7 @@ if [ "$RUN_ON_START" = "1" ]; then
     run_sync
     run_backfill
     run_sintese
+    run_ressurgir
 fi
 
 while true; do
@@ -173,4 +187,5 @@ while true; do
     run_sync
     run_backfill
     run_sintese
+    run_ressurgir
 done

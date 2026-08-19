@@ -67,6 +67,37 @@ class Config:
     codex_bin: str = "codex"
     sintese_timeout: float = 900.0
 
+    # Busca no acervo. `lexico-llm` manda o corpus inteiro para o modelo — a 70
+    # notas isso tem recall melhor que top-k, e sem dependência nova. O corte por
+    # orçamento existe para quando o acervo passar de umas 300 notas; `doctor`
+    # mostra o quanto do orçamento já está em uso.
+    busca_backend: str = "lexico-llm"    # lexico-llm | (embeddings, quando doer)
+    busca_model_backend: str = "codex"   # codex | claude-cli | anthropic
+    busca_max_chars: int = 120_000
+
+    # Falar no Discord é opt-in. Escrita no vault é idempotente e corrigível
+    # reexecutando; mensagem que outro humano leu, não é.
+    post_enabled: bool = False
+    responder_prefix: str = "?buscar"
+    responder_emoji: str = "💬"          # respondida
+    responder_pendente_emoji: str = "⏳"  # vista, pensando
+    responder_erro_emoji: str = "❌"      # desisti depois de N tentativas
+    responder_intervalo: float = 60.0
+    responder_max_pergunta: int = 500
+    responder_max_por_hora: int = 10
+    responder_channel_ids: list[str] = field(default_factory=list)
+    # O healthcheck do container lê este arquivo; o laço o toca a cada volta
+    # sem erro, mesmo quando não havia pergunta nenhuma.
+    heartbeat_responder: str = ""
+
+    ressurgir_dias: int = 30
+    ressurgir_n: int = 3
+    ressurgir_carencia: int = 180
+    ressurgir_resumo_max: int = 220
+    ressurgir_canal: str = ""
+
+    temas_limiar: int = 8
+
     enrich: bool = True
     enrich_timeout: float = 10.0
 
@@ -130,6 +161,42 @@ class Config:
             sintese_model=os.environ.get("SINTESE_MODEL", cls.sintese_model),
             codex_bin=os.environ.get("CODEX_BIN", cls.codex_bin),
             sintese_timeout=float(os.environ.get("SINTESE_TIMEOUT", "900")),
+            busca_backend=os.environ.get("BUSCA_BACKEND", cls.busca_backend),
+            busca_model_backend=os.environ.get(
+                "BUSCA_MODEL_BACKEND", cls.busca_model_backend
+            ),
+            busca_max_chars=int(os.environ.get("BUSCA_MAX_CHARS", "120000")),
+            post_enabled=os.environ.get("DISCORD_POST_ENABLED", "0")
+            not in ("0", "false", "no"),
+            responder_prefix=os.environ.get("RESPONDER_PREFIX", cls.responder_prefix),
+            responder_emoji=os.environ.get("RESPONDER_EMOJI", cls.responder_emoji),
+            responder_pendente_emoji=os.environ.get(
+                "RESPONDER_PENDENTE_EMOJI", cls.responder_pendente_emoji
+            ),
+            responder_erro_emoji=os.environ.get(
+                "RESPONDER_ERRO_EMOJI", cls.responder_erro_emoji
+            ),
+            responder_intervalo=float(os.environ.get("RESPONDER_INTERVALO", "60")),
+            responder_max_pergunta=int(
+                os.environ.get("RESPONDER_MAX_PERGUNTA", "500")
+            ),
+            responder_max_por_hora=int(
+                os.environ.get("RESPONDER_MAX_POR_HORA", "10")
+            ),
+            responder_channel_ids=[
+                c.strip()
+                for c in os.environ.get("RESPONDER_CHANNEL_IDS", "").split(",")
+                if c.strip()
+            ] or channel_ids,
+            ressurgir_dias=int(os.environ.get("RESSURGIR_DIAS", "30")),
+            ressurgir_n=int(os.environ.get("RESSURGIR_N", "3")),
+            ressurgir_carencia=int(os.environ.get("RESSURGIR_CARENCIA", "180")),
+            ressurgir_resumo_max=int(os.environ.get("RESSURGIR_RESUMO_MAX", "220")),
+            ressurgir_canal=os.environ.get("RESSURGIR_CANAL", ""),
+            temas_limiar=int(os.environ.get("TEMAS_LIMIAR", "8")),
+            heartbeat_responder=os.environ.get("DLB_HEARTBEAT", "")
+            if os.environ.get("DLB_MODE") == "responder"
+            else os.environ.get("DLB_HEARTBEAT_RESPONDER", ""),
             enrich=os.environ.get("ENRICH_LINKS", "1") not in ("0", "false", "no"),
             enrich_timeout=float(os.environ.get("ENRICH_TIMEOUT", "10")),
             link_notes=os.environ.get("LINK_NOTES", "1") not in ("0", "false", "no"),
@@ -140,9 +207,31 @@ class Config:
         )
 
     @property
+    def marcas_responder(self) -> tuple[str, ...]:
+        """Emojis que significam 'o responder já resolveu esta mensagem'.
+
+        Vocabulário **separado** de `marcas`. Se os dois se misturassem, uma
+        pergunta que contivesse um link seria pulada pelo `sync` para sempre — e
+        uma mensagem legitimamente arquivada não poderia mais ser perguntada.
+        """
+        return (self.responder_emoji, self.responder_pendente_emoji,
+                self.responder_erro_emoji)
+
+    @property
     def marcas(self) -> tuple[str, ...]:
         """Todos os emojis que significam 'esta mensagem já foi resolvida'."""
         return (self.processed_emoji, self.duplicate_emoji)
+
+    def validar_marcas(self) -> None:
+        """As duas marcações não podem colidir. Um typo aqui é invisível."""
+        comuns = set(self.marcas) & set(self.marcas_responder)
+        if comuns:
+            raise ConfigError(
+                f"emoji usado nas duas marcações: {', '.join(sorted(comuns))}. "
+                "PROCESSED_EMOJI/DUPLICATE_EMOJI marcam o que o sync arquivou; "
+                "RESPONDER_* marcam o que o responder já respondeu. Misturar faz "
+                "pergunta com link ser ignorada pelo sync para sempre."
+            )
 
     def validate_vault(self) -> None:
         missing = [

@@ -274,6 +274,118 @@ captura; a síntese é uma chamada por semana e pode sair de outra fila.
 
 Trocar é uma linha: `SINTESE_BACKEND=claude-cli` ou `anthropic`.
 
+## Passo 7 — O bot responde: `?buscar`
+
+Até aqui o bot só reagia com emoji. Agora ele fala — e isso é **opt-in**, porque
+escrita no vault é corrigível reexecutando e mensagem que outro humano leu, não é.
+
+### Antes: a permissão
+
+De **66624** para **68672** (soma *Enviar mensagens*). Reconvide o bot, ou marque a
+permissão no canal, e confira:
+
+```bash
+echo 'DISCORD_POST_ENABLED=1' >> .env
+python3 -m dlb doctor --testar-envio    # posta uma linha e apaga
+```
+
+### Usar
+
+No canal, escreva `?buscar <pergunta>` (ou `?b`). Em até um ciclo o bot marca ⏳,
+e quando a resposta sai troca por 💬:
+
+```
+você  ?buscar o que eu salvei sobre homelab?
+bot   Você salvou principalmente referências práticas para montar e operar
+      serviços próprios. […]
+
+      📚 no seu acervo:
+      · This Underrated Tool Replaced 3 Homelab Services — <https://…>
+      · I Found The END GAME of Homelab Tunnels — <https://…>
+```
+
+Pela linha de comando, sem tocar o Discord:
+
+```bash
+python3 -m dlb buscar "o que eu salvei sobre agentes de IA?"
+```
+
+### Três coisas que valem saber
+
+**Não é slash command nativo.** É polling do que já lemos. Gateway exigiria uma
+dependência de websocket e um processo com conexão de estado; Interactions exigiria
+uma **porta de entrada** na máquina que guarda o seu `~/.claude`. A 60s de ciclo, e
+com a chamada de modelo levando 30-60s, o polling não é o gargalo.
+
+**O modelo não escreve link.** O payload não leva URL — todo endereço da resposta é
+montado do acervo, e `id` inexistente é descartado. Se o acervo não tem nada, a
+resposta diz isso e para: a pior falha possível seria responder de cabeça sobre algo
+que você não guardou.
+
+**As marcas não colidem com as do sync.** `💬 ⏳ ❌` são um vocabulário separado de
+`✅ 📚`. Se colidissem, uma pergunta que contivesse um link seria pulada pelo sync
+para sempre. `dlb doctor` confere e falha alto.
+
+Um canal separado (`RESPONDER_CHANNEL_IDS`) mantém o de captura limpo.
+
+## Passo 8 — Ressurgimento
+
+Uma vez por dia, três links de 30+ dias voltam ao canal com o resumo. **Nenhuma
+chamada de modelo** — o resumo já existe na nota. É o recurso mais barato do
+projeto e provavelmente o que mais surpreende.
+
+```bash
+python3 -m dlb ressurgir --dry-run   # mostra, não posta
+python3 -m dlb ressurgir
+```
+
+No container, `DLB_RESSURGIR=1`. Roda no laço lento de propósito: pode esperar.
+
+Não repete: guarda o que já postou em `.state/ressurgir.json`, com carência de 180
+dias. Rodar duas vezes no mesmo dia escolhe os mesmos links (a semente inclui a
+data), e o segundo sai na hora.
+
+**Dois filtros que mudam a qualidade:** `triagem: descartado` não volta — você já
+disse que não serviu. E link sem `porque_importa` fica para o fim: medido, esse
+campo é vazio exatamente nos links que o modelo não conseguiu descrever, e
+ressurgir "conteúdo não identificado" é ruído. No seu acervo isso corta de 70 para
+**41 elegíveis**.
+
+## Passo 9 — Quando um conceito virou tema
+
+```bash
+python3 -m dlb temas                 # relatório
+python3 -m dlb temas --limiar 3      # olhar mais cedo
+python3 -m dlb temas --backlinks     # conta backlinks (mais lento)
+python3 -m dlb temas --markdown      # bloco pronto para colar num MOC
+```
+
+**Não cria nada no vault** — nem MOC, nem stub. Emite o bloco; a prosa é sua. Uma
+pasta cheia de MOC vazio é pior que uma pasta sem MOC nenhum, e o `MOC - Índice` do
+seu vault já diz isso: "MOC não nasce, emerge".
+
+O limiar padrão é **8**, o número do seu `MOC - Índice` — o `plan.md` dizia 15.
+Onde os dois discordam, vale o do vault.
+
+### O relatório de hoje, e o que ele diz
+
+Nenhum conceito chegou a 8. Com `--limiar 3`:
+
+```
+  4 links · n8n
+  3 links · Inteligência Artificial      grafias: Inteligência Artificial, Inteligência artificial
+  3 links · OpenAI
+  3 links · Deep Learning
+  3 links · Google Gemini
+```
+
+E 106 conceitos com **um** uso só. Leitura honesta: o acervo ainda é diverso demais
+para MOC. Vale voltar depois de mais algumas semanas de captura.
+
+Note o que **não** está na lista: Instagram (7) e YouTube (6) seriam os líderes
+brutos — e são plataformas, onde o link mora, não do que ele trata. Saem por
+stoplist, e aparecem numa seção de descartados para você poder discordar.
+
 ## Manutenção e reparo
 
 ### Link no diário que não tem nota
@@ -340,6 +452,14 @@ python3 -m dlb sintese                     # semana corrente
 python3 -m dlb sintese --semana anterior   # a que acabou
 python3 -m dlb sintese --mes 2026-08       # rollup mensal
 python3 -m dlb sintese --force             # regenera mesmo sem mudança
+
+# buscar, responder, ressurgir, temas
+python3 -m dlb buscar "o que salvei sobre X?"   # pela linha de comando
+python3 -m dlb doctor --testar-envio            # confere 'Enviar mensagens'
+python3 -m dlb responder --uma-vez              # uma passada
+python3 -m dlb responder                        # laço de 60s
+python3 -m dlb ressurgir --dry-run
+python3 -m dlb temas --limiar 3
 
 # painéis (exige o app Obsidian aberto)
 obsidian reload && sleep 3

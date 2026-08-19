@@ -3,14 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .classify import ClassifyError, classify
 from .config import Config, ConfigError
-from .discord_client import DiscordClient, DiscordError, ja_marcada, snowflake_for
+from .discord_client import (
+    DiscordClient,
+    DiscordError,
+    ja_marcada,
+    partir_para_discord,
+    snowflake_for,
+)
 from .enrich import fetch_meta
 from .extract import day_of_message, extract_links, group_by_day
 from .corpus import (
@@ -21,7 +29,13 @@ from .corpus import (
     semana_atual,
     semanas_do_mes,
 )
+from .busca import BuscaError, buscar, formatar_para_discord
 from .migrar import migrar
+from .responder import uma_volta
+from .ressurgir import Historico, elegiveis, escolher
+from .ressurgir import formatar as formatar_ressurgir
+from .temas import PLATAFORMAS, levantar
+from .temas import formatar as formatar_temas
 from .sintese import SinteseError, gerar, gerar_mes, hash_fonte
 from .models import LinkHit, LinkNote, PageMeta
 from .state import ChannelState, Store
@@ -609,6 +623,160 @@ def _preview_sintese(s) -> None:
         _log(f"  ? {pergunta}")
 
 
+def _exigir_post(cfg: Config) -> None:
+    """Falar é opt-in. Escrita no vault é idempotente e corrigível reexecutando;
+    mensagem que outro humano leu, não é."""
+    cfg.validar_marcas()
+    if not cfg.post_enabled:
+        raise ConfigError(
+            "DISCORD_POST_ENABLED=0 — o bot não vai postar. Ligue no .env e "
+            "confira a permissão 'Enviar mensagens' (inteiro 68672)."
+        )
+
+
+def cmd_buscar(cfg: Config, args: argparse.Namespace) -> int:
+    """Pergunta ao acervo pela linha de comando. Não toca o Discord."""
+    cfg.validate_vault()
+    acervo = ler_links(cfg.vault_path)
+    pergunta = " ".join(args.pergunta).strip()
+    if not pergunta:
+        _log("Nada a perguntar.")
+        return 2
+    try:
+        resposta = buscar(cfg, pergunta, acervo)
+    except BuscaError as exc:
+        print(f"ERRO: {exc}", file=sys.stderr)
+        return 1
+    print(formatar_para_discord(resposta))
+    _log(f"\n(confiança {resposta.confianca} · {resposta.considerados} item(ns) considerados)")
+    return 0
+
+
+def cmd_responder(cfg: Config, args: argparse.Namespace) -> int:
+    """Vigia o canal e responde `?buscar`. Uma volta, ou laço."""
+    _exigir_post(cfg)
+    cfg.validate_vault()
+    client = DiscordClient(cfg.auth_header)
+    store = Store(cfg.state_dir, prefix="responder-")
+
+    _log(
+        f"responder · prefixo {cfg.responder_prefix!r} · marca {cfg.responder_emoji} · "
+        f"canais {', '.join(cfg.responder_channel_ids)}"
+    )
+    if args.uma_vez:
+        conta = uma_volta(cfg, client, store, log=_log)
+        for erro in conta.erros:
+            print(f"  {erro}", file=sys.stderr)
+        _log(f"{conta.respondidas} respondida(s) · {conta.recusadas} recusada(s)")
+        return 1 if conta.erros else 0
+
+    _log(f"laço de {cfg.responder_intervalo:.0f}s. Ctrl-C para sair.")
+    while True:
+        try:
+            conta = uma_volta(cfg, client, store, log=_log)
+            for erro in conta.erros:
+                print(f"  {erro}", file=sys.stderr)
+            if cfg.heartbeat_responder:
+                # Uma volta sem erro é sinal de vida, mesmo sem pergunta nenhuma.
+                _bater(cfg.heartbeat_responder)
+        except KeyboardInterrupt:
+            _log("encerrando.")
+            return 0
+        except Exception as exc:                     # noqa: BLE001
+            # O laço não morre por um erro isolado: é PID 1 de um container.
+            print(f"  erro na volta: {exc}", file=sys.stderr)
+        time.sleep(cfg.responder_intervalo)
+
+
+def _bater(caminho: str) -> None:
+    try:
+        Path(caminho).parent.mkdir(parents=True, exist_ok=True)
+        Path(caminho).write_text(f"{int(time.time())}\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def cmd_ressurgir(cfg: Config, args: argparse.Namespace) -> int:
+    """Posta N links antigos com o resumo. Nenhuma chamada de modelo."""
+    cfg.validate_vault()
+    hoje = _hoje_local()
+    historico = Historico.carregar(cfg.state_dir)
+
+    if historico.ultima_execucao == hoje and not args.force:
+        _log(f"já ressurgiu hoje ({hoje}). Use --force para repetir.")
+        return 0
+
+    acervo = ler_links(cfg.vault_path)
+    pool = elegiveis(acervo, hoje, args.dias if args.dias is not None else cfg.ressurgir_dias)
+    if not pool:
+        _log(f"nenhum link com {cfg.ressurgir_dias}+ dias no acervo.")
+        return 0
+
+    quantos = args.n if args.n is not None else cfg.ressurgir_n
+    escolhidos = escolher(pool, historico, hoje, quantos, semente="dlb")
+    if not escolhidos:
+        _log("nada a ressurgir.")
+        return 0
+
+    mensagem = formatar_ressurgir(escolhidos, hoje, cfg.ressurgir_resumo_max)
+    canal = cfg.ressurgir_canal or (cfg.channel_ids[0] if cfg.channel_ids else "")
+
+    _log(f"{len(escolhidos)} link(s) de {len(pool)} elegível(is) · canal {canal}")
+    for e in escolhidos:
+        _log(f"    {e.dia} · {e.titulo[:70]}")
+
+    if args.dry_run:
+        print()
+        print(mensagem)
+        _log("\n(--dry-run: nada foi postado)")
+        return 0
+
+    _exigir_post(cfg)
+    client = DiscordClient(cfg.auth_header)
+    try:
+        for pedaco in partir_para_discord(mensagem):
+            client.post_message(canal, pedaco)
+    except DiscordError as exc:
+        print(f"ERRO ao postar: {exc}", file=sys.stderr)
+        return 1
+
+    for e in escolhidos:
+        historico.postados[e.url] = hoje
+    historico.ultima_execucao = hoje
+    historico.podar(hoje, cfg.ressurgir_carencia)
+    historico.salvar(cfg.state_dir)
+    return 0
+
+
+def cmd_temas(cfg: Config, args: argparse.Namespace) -> int:
+    """Que conceitos já viraram tema. Relatório — não cria nada no vault."""
+    cfg.validate_vault()
+    acervo = ler_links(cfg.vault_path)
+    if not acervo:
+        _log("Nenhuma nota em 50_LINKS/. Rode `dlb migrar` primeiro.")
+        return 0
+
+    ignorar = set(PLATAFORMAS)
+    extra = os.environ.get("TEMAS_IGNORAR", "").strip()
+    if extra:
+        ignorar |= {x.strip() for x in extra.split(",") if x.strip()}
+
+    rel = levantar(
+        cfg.vault_path,
+        acervo,
+        limiar=args.limiar if args.limiar is not None else cfg.temas_limiar,
+        ignorar=ignorar,
+        com_backlinks=args.backlinks,
+    )
+    saida = formatar_temas(rel, markdown=args.markdown)
+    if args.out:
+        Path(args.out).write_text(saida + "\n", encoding="utf-8")
+        _log(f"Escrito em {args.out}")
+    else:
+        print(saida)
+    return 0
+
+
 def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     ok = True
 
@@ -641,6 +809,45 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
             )
     else:
         _log("notas de link   desligado (LINK_NOTES=0)")
+
+    # O tamanho do corpus contra o orçamento é o instrumento que diz quando a
+    # busca léxica deixa de bastar — em vez de virar julgamento de gosto.
+    acervo = ler_links(cfg.vault_path)
+    if acervo:
+        chars = sum(
+            len(e.titulo) + len(e.resumo) + len(e.porque_importa) + 80 for e in acervo
+        )
+        pct = 100 * chars / max(cfg.busca_max_chars, 1)
+        _log(
+            f"busca           {cfg.busca_backend} → {cfg.busca_model_backend} · "
+            f"corpus {chars} chars ({pct:.0f}% de BUSCA_MAX_CHARS)"
+        )
+        if pct >= 100:
+            _log("                acima do orçamento — o ranking já está cortando;")
+            _log("                é o momento de considerar embeddings.")
+
+    _log(f"síntese         {cfg.sintese_backend}")
+
+    try:
+        cfg.validar_marcas()
+        _log(
+            f"responder       {cfg.responder_prefix!r} · {cfg.responder_emoji} "
+            f"respondida · sem colisão com {' '.join(cfg.marcas)}"
+        )
+    except ConfigError as exc:
+        _log(f"responder       FALHA: {exc}")
+        ok = False
+
+    hist = Historico.carregar(cfg.state_dir)
+    pool = elegiveis(acervo, _hoje_local(), cfg.ressurgir_dias)
+    _log(
+        f"ressurgir       {len(pool)} elegível(is) · {len(hist.postados)} em carência · "
+        f"última {hist.ultima_execucao or 'nunca'}"
+    )
+    _log(
+        f"postar          {'ligado' if cfg.post_enabled else 'desligado'} "
+        f"(permissão 68672: View + Read History + Reactions + Send Messages)"
+    )
     _log(
         f"marcação        {cfg.processed_emoji} arquivado agora · "
         f"{cfg.duplicate_emoji} já documentado  (precisa de 'Adicionar reações')"
@@ -664,6 +871,20 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
             f"cursor {channel_id}  last_message_id={state.last_message_id} "
             f"last_run={state.last_run}"
         )
+
+    if getattr(args, "testar_envio", False):
+        # A única forma honesta de conferir 'Enviar mensagens' sem calcular
+        # permissão efetiva a partir de guild + roles: postar e apagar. O bot
+        # pode apagar a própria mensagem sem permissão extra.
+        for channel_id in cfg.channel_ids:
+            try:
+                msg = client.post_message(channel_id, "teste do dlb — pode ignorar")
+                _log(f"envio {channel_id}   OK — postou e vai apagar")
+                if msg.get("id"):
+                    client.delete_message(channel_id, msg["id"])
+            except DiscordError as exc:
+                _log(f"envio {channel_id}   FALHA: {exc}")
+                ok = False
 
     _log("\nOK" if ok else "\nHá problemas acima.")
     return 0 if ok else 1
@@ -754,7 +975,41 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sint.set_defaults(func=cmd_sintese)
 
+    busca = sub.add_parser("buscar", help="pergunta ao acervo, pela linha de comando")
+    busca.add_argument("pergunta", nargs="+", help="a pergunta")
+    busca.set_defaults(func=cmd_buscar)
+
+    resp = sub.add_parser(
+        "responder", help="vigia o canal e responde `?buscar` (exige postar)"
+    )
+    resp.add_argument(
+        "--uma-vez", action="store_true", help="uma passada em vez do laço"
+    )
+    resp.set_defaults(func=cmd_responder)
+
+    ress = sub.add_parser(
+        "ressurgir", help="posta links antigos com o resumo (sem chamar modelo)"
+    )
+    ress.add_argument("--dias", type=int, metavar="N", help="idade mínima (padrão 30)")
+    ress.add_argument("--n", type=int, metavar="N", help="quantos (padrão 3)")
+    ress.add_argument("--dry-run", action="store_true", help="mostra, não posta")
+    ress.add_argument("--force", action="store_true", help="posta de novo no mesmo dia")
+    ress.set_defaults(func=cmd_ressurgir)
+
+    tem = sub.add_parser(
+        "temas", help="conceitos que já viraram tema — relatório, não cria nada"
+    )
+    tem.add_argument("--limiar", type=int, metavar="N", help="links para 'maduro' (padrão 8)")
+    tem.add_argument("--backlinks", action="store_true", help="conta backlinks (mais lento)")
+    tem.add_argument("--markdown", action="store_true", help="bloco pronto para colar num MOC")
+    tem.add_argument("--out", help="arquivo de saída (padrão: stdout)")
+    tem.set_defaults(func=cmd_temas)
+
     doctor = sub.add_parser("doctor", help="checa configuração, vault e acesso ao Discord")
+    doctor.add_argument(
+        "--testar-envio", action="store_true",
+        help="posta uma mensagem de teste e apaga — confere 'Enviar mensagens'",
+    )
     doctor.set_defaults(func=cmd_doctor)
 
     return parser

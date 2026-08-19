@@ -130,6 +130,61 @@ emendado continua funcionando, e a pasta é criada na primeira escrita. Mas ante
 ligar isto num vault novo, emende o `90_META/ESQUEMA.md` dele — `tipo: link` e as
 propriedades `triagem`, `dominio` e `categoria` precisam estar registradas.
 
+### Falar no Discord
+
+| Variável | Padrão | O quê |
+|---|---|---|
+| `DISCORD_POST_ENABLED` | `0` | O bot pode enviar mensagem |
+| `RESPONDER_PREFIX` | `?buscar` | Gatilho no canal (`?b` também vale) |
+| `RESPONDER_INTERVALO` | `60` | Segundos entre voltas do laço |
+| `RESPONDER_MAX_POR_HORA` | `10` | Teto de chamadas de modelo por hora |
+| `RESPONDER_MAX_PERGUNTA` | `500` | Caracteres aceitos na pergunta |
+| `RESPONDER_CHANNEL_IDS` | = `DISCORD_CHANNEL_IDS` | Onde vigiar perguntas |
+| `RESPONDER_EMOJI` | `💬` | Respondida |
+| `RESPONDER_PENDENTE_EMOJI` | `⏳` | Vista, pensando |
+| `RESPONDER_ERRO_EMOJI` | `❌` | Recusada ou falhou |
+
+**A permissão muda de 66624 para 68672** (soma *Enviar mensagens*, 2048).
+Reconvide o bot ou marque a permissão no canal, e confira com
+`dlb doctor --testar-envio` — ele posta uma linha e apaga em seguida.
+
+*Enviar links incorporados* **não** é necessária: toda URL sai como `<url>`, o que
+suprime a prévia do Discord.
+
+Postar é opt-in porque a assimetria é real: escrita no vault é idempotente e
+corrigível reexecutando; mensagem que outro humano leu, não é.
+
+**As marcas do responder são um vocabulário separado** de `PROCESSED_EMOJI`/
+`DUPLICATE_EMOJI`. Se colidissem, uma pergunta que contivesse um link seria pulada
+pelo `sync` para sempre, e uma mensagem arquivada não poderia mais ser perguntada.
+`Config.validar_marcas()` levanta erro na colisão, e o `doctor` mostra.
+
+### Busca no acervo
+
+| Variável | Padrão | O quê |
+|---|---|---|
+| `BUSCA_BACKEND` | `lexico-llm` | Como ranquear (`embeddings` quando doer) |
+| `BUSCA_MODEL_BACKEND` | `codex` | Quem responde: `codex` · `claude-cli` · `anthropic` |
+| `BUSCA_MAX_CHARS` | `120000` | Orçamento de prompt |
+
+Sem embeddings, e a conta é simples: 70 notas somam ~33 mil caracteres. O corpus
+inteiro cabe num prompt com folga, e mandar tudo tem recall estritamente melhor que
+top-k — não existe `k` para errar. O `doctor` imprime o corpus contra o orçamento;
+quando passar de 100%, é o momento medido de escrever `_ranquear_embeddings`.
+
+### Ressurgimento e temas
+
+| Variável | Padrão | O quê |
+|---|---|---|
+| `RESSURGIR_DIAS` | `30` | Idade mínima do link |
+| `RESSURGIR_N` | `3` | Quantos por dia |
+| `RESSURGIR_CARENCIA` | `180` | Dias antes de o mesmo link poder voltar |
+| `RESSURGIR_RESUMO_MAX` | `220` | Caracteres de resumo na mensagem |
+| `RESSURGIR_CANAL` | primeiro de `DISCORD_CHANNEL_IDS` | Onde postar |
+| `DLB_RESSURGIR` | `0` | Automático, uma vez por dia (container) |
+| `TEMAS_LIMIAR` | `8` | Links para um conceito ser "tema maduro" |
+| `TEMAS_IGNORAR` | lista embutida | Plataformas a descartar do ranking |
+
 ### Marcação no Discord
 
 | Variável | Padrão | O quê |
