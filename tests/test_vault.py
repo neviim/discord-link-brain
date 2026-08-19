@@ -41,7 +41,7 @@ class VaultCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        for sub in ("10_FONTES", "20_WIKI", "30_MOC", "40_DIARIO", "90_META"):
+        for sub in ("10_FONTES", "20_WIKI", "30_MOC", "40_DIARIO", "50_LINKS", "90_META"):
             (self.root / sub).mkdir()
         (self.root / "20_WIKI" / "Nostr.md").write_text("# Nostr\n", encoding="utf-8")
         (self.root / "30_MOC" / "MOC - Índice.md").write_text(
@@ -90,6 +90,7 @@ class TestFonte(VaultCase):
 
 class TestDiario(VaultCase):
     def test_links_only_to_existing_wiki_pages(self):
+        """Sem nota atômica (LINK_NOTES=0) o bullet continua rico, como sempre foi."""
         notes = [note("https://exemplo.com/a", "Relays", ["Nostr", "Relay Nostr"])]
         text = self.vault.write_diario("estudos", "2026-08-15", notes).path.read_text(
             encoding="utf-8"
@@ -238,10 +239,6 @@ class TestLotePosteriorNoMesmoDia(VaultCase):
 
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestUrlsArquivadas(VaultCase):
     """A fonte é a autoridade sobre o que já foi arquivado."""
 
@@ -276,3 +273,112 @@ class TestUrlsArquivadas(VaultCase):
             self.vault.archived_urls(),
             {"https://exemplo.com/a", "https://exemplo.com/b"},
         )
+
+
+class TestDiarioComNotaAtomica(VaultCase):
+    """Com a camada `50_LINKS/` ligada, o diário aponta em vez de repetir.
+
+    Duas cópias da mesma prosa divergem no primeiro `--force`, e o ESQUEMA
+    proíbe manter a mesma verdade em dois lugares.
+    """
+
+    def escrever(self, notes, day="2026-08-15"):
+        self.vault.write_link_notes("estudos", notes)
+        self.vault.write_diario("estudos", day, notes)
+        return (self.root / "40_DIARIO" / f"{day}.md").read_text(encoding="utf-8")
+
+    def test_bullet_aponta_por_wikilink_para_a_nota(self):
+        texto = self.escrever([note("https://e.com/a", "Relays", [])])
+        self.assertIn("- [[2026-08-15 Relays]] — Um resumo curto.", texto)
+
+    def test_a_url_continua_no_bullet(self):
+        """A chave de idempotência: `_append_diario` procura `](url)`.
+
+        Trocar por `<url>` ou por wikilink puro faz o segundo lote do dia sumir
+        em silêncio, com a mensagem já marcada como arquivada no Discord.
+        """
+        texto = self.escrever([note("https://e.com/a", "Relays", [])])
+        self.assertIn("[abrir](https://e.com/a)", texto)
+        import re
+        self.assertIn(
+            "https://e.com/a", re.findall(r"\]\((https?://[^)\s]+)\)", texto)
+        )
+
+    def test_a_prosa_nao_e_repetida_no_diario(self):
+        texto = self.escrever([note("https://e.com/a", "Relays", [])])
+        self.assertNotIn("Por que importa", texto)
+
+    def test_candidatos_do_dia_continuam_no_diario(self):
+        """Um `#acao/expandir` por dia, não um por link — o namespace afogaria."""
+        texto = self.escrever([note("https://e.com/a", "Relays", ["Relay Nostr"])])
+        self.assertIn("Relay Nostr", texto)
+        self.assertIn("#acao/expandir", texto)
+
+    def test_segundo_lote_do_dia_e_detectado_na_forma_nova(self):
+        """A regressão que `TestLotePosteriorNoMesmoDia` trava, agora com o
+        bullet magro: escrever o mesmo link duas vezes não pode duplicar."""
+        manha = [note("https://e.com/manha", "Da manhã", [], "09:00")]
+        self.escrever(manha)
+        r = self.vault.write_diario("estudos", "2026-08-15", manha)
+        self.assertEqual(r.action, "pulado")
+
+    def test_lote_posterior_com_link_novo_entra_na_forma_nova(self):
+        self.escrever([note("https://e.com/manha", "Da manhã", [], "09:00")])
+        tarde = [note("https://e.com/tarde", "Da tarde", [], "15:00")]
+        self.vault.write_link_notes("estudos", tarde)
+        r = self.vault.write_diario("estudos", "2026-08-15", tarde)
+
+        self.assertEqual(r.action, "atualizado")
+        texto = (self.root / "40_DIARIO" / "2026-08-15.md").read_text()
+        self.assertIn("[[2026-08-15 Da manhã]]", texto)
+        self.assertIn("[[2026-08-15 Da tarde]]", texto)
+        self.assertEqual(texto.count("## Links do Discord — #estudos"), 1)
+
+    def test_secao_na_forma_antiga_ainda_reconhece_o_link(self):
+        """Compatibilidade retroativa com os 26 dias já escritos: a URL está em
+        `**[titulo](url)**` lá e em `[abrir](url)` aqui — o mesmo regex acha."""
+        notes = [note("https://e.com/a", "Relays", [])]
+        self.vault.write_diario("estudos", "2026-08-15", notes)   # forma rica
+        self.vault.write_link_notes("estudos", notes)
+        r = self.vault.write_diario("estudos", "2026-08-15", notes)
+        self.assertEqual(r.action, "pulado")
+
+
+class TestAutoridadeDoDedup(VaultCase):
+    def test_nota_de_link_nao_conta_como_url_arquivada(self):
+        """`10_FONTES/` continua a única autoridade.
+
+        Se `50_LINKS/` contasse, apagar uma nota faria o link ser recapturado —
+        e apagar é justamente o que você faz com o que não quer. O estado certo
+        para isso é `triagem: descartado`, que mantém o arquivo.
+        """
+        self.vault.write_link_note("estudos", note("https://so-na-nota.com/x", "X", []))
+        self.assertEqual(self.vault.archived_urls(), set())
+
+
+class TestLinksSemNota(VaultCase):
+    def test_aponta_o_link_do_diario_que_nao_tem_nota(self):
+        notes = [note("https://e.com/a", "Relays", [])]
+        self.vault.write_diario("estudos", "2026-08-15", notes)
+        self.assertEqual(
+            self.vault.links_sem_nota(), [("2026-08-15", "https://e.com/a")]
+        )
+
+    def test_depois_de_migrar_nao_sobra_pendencia(self):
+        notes = [note("https://e.com/a", "Relays", [])]
+        self.vault.write_link_notes("estudos", notes)
+        self.vault.write_diario("estudos", "2026-08-15", notes)
+        self.assertEqual(self.vault.links_sem_nota(), [])
+
+    def test_prosa_humana_na_daily_e_invisivel(self):
+        """Só seção com o marcador do pipeline conta."""
+        (self.root / "40_DIARIO" / "2026-08-15.md").write_text(
+            "---\ntipo: diario\n---\n\n# 2026-08-15\n\n"
+            "Li o [artigo](https://humano.com/x) hoje.\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(self.vault.links_sem_nota(), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

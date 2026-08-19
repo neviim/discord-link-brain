@@ -84,6 +84,16 @@ class DiscordClient:
         data = self._get(f"/channels/{channel_id}")
         return data.get("name", channel_id) if isinstance(data, dict) else channel_id
 
+    def guild_id(self, channel_id: str) -> str | None:
+        """A que servidor o canal pertence. `None` em DM.
+
+        `GET /channels/{id}/messages` **não** devolve `guild_id` em cada
+        mensagem, então sem esta chamada o link para a mensagem original sai
+        como `/channels/@me/...` e não abre num canal de servidor.
+        """
+        data = self._get(f"/channels/{channel_id}")
+        return data.get("guild_id") if isinstance(data, dict) else None
+
     def remove_reaction(self, channel_id: str, message_id: str, emoji: str) -> None:
         """Tira uma reação do bot. Silencioso se ela não estava lá."""
         caminho = (

@@ -24,13 +24,16 @@ arquivo, linha e o que era esperado.
 
 | Arquivo | Testes | Cobre |
 |---|---|---|
+| `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, bloco de candidatos, reparo do link da mensagem |
+| `test_nota_de_link.py` | 35 | **o contrato com o ESQUEMA**: vocabulário fechado, nome de arquivo, e o que `--force` preserva do humano |
+| `test_vault.py` | 32 | as quatro camadas, imutabilidade, idempotência do lote posterior, autoridade do dedup |
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
+| `test_state_config.py` | 27 | os dois cursores, `.env` vs ambiente, as duas marcas, os mapas canal:valor |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
-| `test_state_config.py` | 22 | os dois cursores, `.env` vs ambiente, as duas marcas |
-| `test_extract.py` | 14 | normalização de URL, canonização YouTube/X, dedup, fuso |
+| `test_extract.py` | 16 | normalização de URL, canonização YouTube/X, dedup, fuso, `guild_id` no link da mensagem |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
-| `test_vault.py` | 13 | as três camadas, imutabilidade, idempotência, frontmatter |
-| **total** | **113** | 55% das linhas de `dlb/` |
+| `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML em silêncio |
+| **total** | **221** | |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -106,6 +109,22 @@ c._get = lambda path, params=None: lote_falso
 `AREAS` em `models.py` é o vocabulário fechado. Mas **mude o `ESQUEMA.md` do
 vault primeiro** — a regra é dele, não desta ferramenta. Valor que o LLM
 inventar fora da lista cai para `area/ia`.
+
+### Acrescentar uma propriedade à nota de link
+
+Três passos, nesta ordem, e o primeiro não é código:
+
+1. **Emende o `90_META/ESQUEMA.md` do vault.** Nome, tipo, se é obrigatória e o
+   vocabulário. Sem isso você está abrindo exceção silenciosa num contrato.
+2. `frontmatter.KEY_ORDER` — a ordem canônica de escrita. Chave que não está lá
+   sai no fim, em ordem alfabética.
+3. `Vault._meta_link()` em `vault.py`. Se for propriedade que o **humano** edita,
+   acrescente-a à lista preservada em `_reescrever_link()`, senão `--force`
+   apaga o trabalho dele.
+
+Se o valor vier do LLM, valide contra vocabulário fechado em `classify.py`, como
+`categoria` e `area` já fazem. Se der para computar localmente — `dominio` sai de
+`host_of()` — **compute**, não peça ao modelo.
 
 ### Acrescentar um site à canonização
 

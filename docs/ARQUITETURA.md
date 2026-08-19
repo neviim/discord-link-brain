@@ -21,7 +21,9 @@ falhar sem derrubar as outras.
                    ↓
 6. CLASSIFICA    classify.classify → 1 chamada de LLM por dia, não por link
                    ↓
-7. ESCREVE       vault.write_fonte + write_diario + register_capture
+7. ESCREVE       vault.write_fonte + write_link_notes + write_diario
+                 + register_capture   (nesta ordem: o diário precisa do
+                 nome do arquivo da nota para montar o wikilink)
                    ↓
 8. MARCA         discord_client.add_reaction → ✅ no Discord
 ```
@@ -34,13 +36,14 @@ execução.
 
 | Módulo | Linhas | Responsabilidade |
 |---|---|---|
-| `cli.py` | 514 | Orquestração: os comandos `sync`, `backfill`, `semana`, `doctor` |
-| `vault.py` | 375 | Escrita nas três camadas do vault e leitura das URLs já arquivadas |
+| `cli.py` | 614 | Orquestração: `sync`, `backfill`, `migrar`, `semana`, `doctor` |
+| `vault.py` | 817 | Escrita nas quatro camadas do vault e leitura das URLs já arquivadas |
 | `enrich.py` | 204 | Descobrir do que a página trata (oEmbed, `og:`, texto do artigo) |
 | `extract.py` | 204 | Achar, normalizar, canonizar e deduplicar URLs |
+| `migrar.py` | 317 | Reconstrói nota atômica do que já está no vault, sem LLM |
 | `discord_client.py` | 166 | REST API do Discord: paginação, rate limit, reações |
 | `config.py` | 125 | Configuração a partir do ambiente e do `.env` |
-| `frontmatter.py` | 86 | YAML no dialeto do vault |
+| `frontmatter.py` | 104 | YAML no dialeto do vault, com a citação de escalar |
 | `models.py` | 80 | As estruturas que atravessam o pipeline + vocabulário fechado |
 | `state.py` | 46 | Os dois cursores por canal |
 
@@ -94,16 +97,36 @@ passa por porteiro:
 **Uma chamada de LLM por dia, não por link.** Mais barato, e o contexto do dia
 inteiro melhora a classificação de cada item.
 
-### `vault.py` — as três camadas
+### `vault.py` — as quatro camadas
 
 | Camada | Arquivo | Regra |
 |---|---|---|
 | `10_FONTES/` | `FONTE - Discord <canal> - AAAA-MM-DD.md` | **Imutável.** Captura crua, cronológica. Só reescreve com `--force`. |
-| `40_DIARIO/` | `AAAA-MM-DD.md` | Seção acrescentada, nunca substituindo o que você escreveu. |
-| `30_MOC/` | `MOC - Captura Discord.md` | Hub de navegação; registra-se sozinho em `MOC - Índice`. |
+| `50_LINKS/` | `AAAA-MM-DD <título>.md` | Uma nota por link. **Idempotente por URL** e nunca reescrita sem `--force`, porque é o único artefato que o humano edita por desenho. |
+| `40_DIARIO/` | `AAAA-MM-DD.md` | Seção acrescentada, nunca substituindo o que você escreveu. Aponta para as notas de link. |
+| `30_MOC/` | `MOC - Captura Discord.md` + `Links.base` | Hub de navegação; registra-se sozinho em `MOC - Índice`. |
 
 Tudo respeita o contrato em `90_META/ESQUEMA.md` do vault: vocabulário fechado
-de `tipo`, `status`, `tags`, e wikilink em propriedade **sempre entre aspas**.
+de `tipo`, `status`, `triagem`, `categoria`, `tags`, e wikilink em propriedade
+**sempre entre aspas**.
+
+#### A fronteira do humano na nota de link
+
+A nota de link tem duas metades. Acima de `## Minhas notas` é da máquina e
+`--force` refaz. Abaixo é sua e **nada** reescreve. No frontmatter, `triagem`,
+`nota` e `status` são preservados na reescrita — são o que você edita.
+
+`triagem` é o eixo que separa sistema vivo de depósito: `inbox` → `lido` →
+`aplicado` | `descartado`. O pipeline só escreve `inbox`; promover é trabalho
+humano, e `dlb doctor` mostra a contagem por estado.
+
+#### Por que o bullet do diário guarda a URL
+
+O bullet magro aponta para a nota por wikilink, mas **mantém a URL** dentro de
+`[abrir](url)`. Isso é a chave de idempotência: `_append_diario` descobre se o
+link já está na seção com `re.findall(r"\]\((https?://[^)\s]+)\)", secao)`.
+Trocar por `<url>` ou por wikilink puro faz o segundo lote do dia ser duplicado
+ou sumir em silêncio com a mensagem já marcada no Discord.
 
 ## Onde mora o estado
 
@@ -114,10 +137,17 @@ Três lugares, com donos diferentes:
 | `.state/<canal>.json` | os dois cursores | o pipeline |
 | Reações no Discord | o que já foi resolvido | o pipeline (só as dele contam) |
 | `10_FONTES/` no vault | quais URLs já foram arquivadas | **o vault** |
+| `50_LINKS/` no vault | qual link já tem nota, e em que triagem | o vault (a triagem é sua) |
 
-A última linha é a mais importante: **o vault é a autoridade sobre o que está
+A terceira linha é a mais importante: **o vault é a autoridade sobre o que está
 arquivado**, não um índice paralelo. Apagou a captura, o link volta a ser
 capturado. Ver [DECISOES.md](DECISOES.md#por-que-não-um-índice-em-sqlite).
+
+`50_LINKS/` é **derivado**, e por isso não entra no dedup: se entrasse, apagar uma
+nota faria o link voltar — e apagar é o que você faz com o que não quer. O estado
+certo para isso é `triagem: descartado`, que mantém o arquivo. As duas camadas
+respondem coisas diferentes: a fonte diz "isto passou por aqui", a nota diz "e eu
+fiz o quê".
 
 ### Os dois cursores
 

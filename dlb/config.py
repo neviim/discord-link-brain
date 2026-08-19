@@ -24,6 +24,21 @@ def load_dotenv(path: Path | None = None) -> None:
         os.environ.setdefault(key, value)
 
 
+def _pares(bruto: str) -> dict[str, str]:
+    """Lê `chave:valor,chave:valor` do ambiente, descartando par incompleto.
+
+    Sem descartar, um `:` solto ou uma vírgula sobrando entra no mapa como
+    `{"": ""}` e vira um canal fantasma sem nome.
+    """
+    mapa: dict[str, str] = {}
+    for par in bruto.split(","):
+        chave, _, valor = par.partition(":")
+        chave, valor = chave.strip(), valor.strip()
+        if chave and valor:
+            mapa[chave] = valor
+    return mapa
+
+
 class ConfigError(RuntimeError):
     pass
 
@@ -34,6 +49,9 @@ class Config:
     discord_token_type: str          # "bot" ou "user"
     channel_ids: list[str]
     channel_names: dict[str, str] = field(default_factory=dict)
+    # canal → servidor. O `sync` descobre isto pela API; esta config existe para
+    # o `migrar`, que é offline por desenho e só tem os arquivos do vault.
+    guild_ids: dict[str, str] = field(default_factory=dict)
 
     vault_path: Path = Path.home() / "Documents/00_Obsidian-dotcom/dotcom"
     timezone: str = "America/Sao_Paulo"
@@ -44,6 +62,10 @@ class Config:
 
     enrich: bool = True
     enrich_timeout: float = 10.0
+
+    # Uma nota atômica por link em `50_LINKS/`. Desligar mantém o pipeline antigo
+    # (bullet rico no diário) sem tocar em código — ver docs/DECISOES.md.
+    link_notes: bool = True
     state_dir: Path = PROJECT_ROOT / ".state"
 
     # Marca no Discord o que já virou nota. Ver README: marcar, nunca apagar.
@@ -79,12 +101,8 @@ class Config:
             )
         channel_ids = [c.strip() for c in raw_channels.split(",") if c.strip()]
 
-        names: dict[str, str] = {}
-        raw_names = os.environ.get("DISCORD_CHANNEL_NAMES", "").strip()
-        for pair in raw_names.split(","):
-            if ":" in pair:
-                cid, _, label = pair.partition(":")
-                names[cid.strip()] = label.strip()
+        names = _pares(os.environ.get("DISCORD_CHANNEL_NAMES", ""))
+        guilds = _pares(os.environ.get("DISCORD_GUILD_IDS", ""))
 
         vault = Path(
             os.environ.get("OBSIDIAN_VAULT", str(cls.vault_path))
@@ -95,6 +113,7 @@ class Config:
             discord_token_type=os.environ.get("DISCORD_TOKEN_TYPE", "bot"),
             channel_ids=channel_ids,
             channel_names=names,
+            guild_ids=guilds,
             vault_path=vault,
             timezone=os.environ.get("TIMEZONE", cls.timezone),
             llm_backend=os.environ.get("LLM_BACKEND", cls.llm_backend),
@@ -102,6 +121,7 @@ class Config:
             claude_bin=os.environ.get("CLAUDE_BIN", cls.claude_bin),
             enrich=os.environ.get("ENRICH_LINKS", "1") not in ("0", "false", "no"),
             enrich_timeout=float(os.environ.get("ENRICH_TIMEOUT", "10")),
+            link_notes=os.environ.get("LINK_NOTES", "1") not in ("0", "false", "no"),
             mark_processed=os.environ.get("MARK_PROCESSED", "1")
             not in ("0", "false", "no"),
             processed_emoji=os.environ.get("PROCESSED_EMOJI", cls.processed_emoji),

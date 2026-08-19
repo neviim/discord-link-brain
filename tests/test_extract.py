@@ -141,3 +141,27 @@ class TestCanonizacaoX(unittest.TestCase):
             normalize_url("https://exemplo.com/busca?s=nostr&t=1"),
             "https://exemplo.com/busca?s=nostr&t=1",
         )
+
+
+class TestJumpUrlDoServidor(unittest.TestCase):
+    """O link para a mensagem original só abre se souber o servidor.
+
+    Regressão de um bug real: `GET /channels/{id}/messages` **não** devolve
+    `guild_id` em cada mensagem, e o `cli.py` não passava o do canal — então
+    todo link saía como `/channels/@me/...` e não abria num canal de servidor.
+    Medido no vault: 70 links gravados com o endereço errado.
+    """
+
+    def mensagens(self):
+        return [msg("999", "olha https://exemplo.com/x")]
+
+    def test_com_guild_o_link_aponta_para_o_servidor(self):
+        hit = extract_links(self.mensagens(), "42", guild_id="741836424646754355")[0]
+        self.assertEqual(
+            hit.jump_url, "https://discord.com/channels/741836424646754355/42/999"
+        )
+
+    def test_sem_guild_cai_para_arroba_me(self):
+        """DM não tem servidor, e aí `@me` é o endereço certo."""
+        hit = extract_links(self.mensagens(), "42")[0]
+        self.assertEqual(hit.jump_url, "https://discord.com/channels/@me/42/999")

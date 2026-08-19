@@ -108,6 +108,67 @@ do dia. A 2 dias por ciclo, 41 dias de histórico entram em ~5 dias.
 | `--since N` | Ignora o cursor e volta N dias |
 | `--day AAAA-MM-DD` | Processa apenas este dia |
 
+## Triagem — os 20 minutos que decidem se isto vale algo
+
+A camada `50_LINKS/` só tem valor se for triada. Sem isso ela é um depósito com
+frontmatter bonito.
+
+Reserve 20 minutos numa sexta. **Não para ler tudo — só para classificar.** Abra
+`30_MOC/MOC - Captura Discord`, a view **Inbox**, e mova cada link:
+
+| De → para | Quando |
+|---|---|
+| `inbox` → `lido` | Você leu ou assistiu. Se rendeu ideia, escreva abaixo de `## Minhas notas`. |
+| `inbox` → `aplicado` | Virou uso real: código, decisão, um hábito. Vale `nota: 4` ou `5`. |
+| `inbox` → `descartado` | Não serviu. **É a transição mais importante.** |
+
+Descartar é trabalho legítimo. A maioria dos links vai virar `descartado` e está
+tudo bem — reconhecer que algo não serviu é o que limpa o ruído. O que nunca é
+triado não é acervo, é entulho.
+
+Dois números para olhar: `dlb doctor` mostra a contagem por estado, e a view
+**Fontes** mostra de onde vem o que você salva. Se 69% vem de um único domínio,
+talvez o caminho seja assinar o RSS dele em vez de recapturar link por link.
+
+## Migrar o histórico
+
+Cria a nota atômica dos links que já estão no vault. **Sem LLM e sem rede** — tudo
+que o modelo produziu está nos bullets do diário, e tudo que é cru está na fonte.
+
+```bash
+python3 -m dlb migrar --dry-run          # confere: quantas notas, quantos avisos
+python3 -m dlb migrar --day 2026-08-17   # um dia só, para inspecionar
+python3 -m dlb migrar                    # tudo
+```
+
+Idempotente por URL: rodar duas vezes não duplica nada e não toca o diário de
+novo. Além de criar as notas, insere uma linha `Nota: [[...]]` sob cada bullet
+antigo — é isso que impede as notas migradas de nascerem órfãs, porque `parte-de` é
+aresta saindo e o invariante 3 exige aresta entrando. `--no-diario` desliga a
+inserção, ao preço das órfãs.
+
+Também é o **caminho de reparo**. A escrita no vault não é transacional: se o
+processo morrer entre a fonte e a nota atômica, o dedup por `10_FONTES/` nunca mais
+recria aquele link. `dlb doctor` avisa quantos links estão nessa situação, e
+`migrar` conserta.
+
+### Reparar o link da mensagem original
+
+Captura anterior a 2026-08-18 gravou `channels/@me/...`, que não abre em canal de
+servidor. Ponha o mapa no `.env` e refaça:
+
+```bash
+# descubra o servidor: python3 -m dlb doctor mostra o canal; o id do servidor
+# está na URL do Discord no navegador, ou em Configurações do servidor
+echo 'DISCORD_GUILD_IDS=<id_canal>:<id_servidor>' >> .env
+python3 -m dlb migrar --force
+```
+
+`--force` refaz o miolo gerado das notas e **preserva** `triagem`, `nota`, `status`,
+relações que você acrescentou e tudo abaixo de `## Minhas notas`. Não duplica a
+referência no diário. As notas de `10_FONTES/` seguem com o valor original — a fonte
+não se corrige, e o link certo é derivável.
+
 ## Apanhado da semana
 
 ```bash

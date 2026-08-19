@@ -55,6 +55,7 @@ Lidas por `config.py`. Valem no host e dentro do container.
 | `DISCORD_TOKEN_TYPE` | `bot` | `bot` ou `user` |
 | `DISCORD_CHANNEL_IDS` | — | **obrigatória.** Ids separados por vírgula |
 | `DISCORD_CHANNEL_NAMES` | — | apelidos legíveis: `id:nome,id:nome`. Usado no nome dos arquivos |
+| `DISCORD_GUILD_IDS` | não | A que servidor cada canal pertence: `id_canal:id_servidor`. Só o `migrar` usa — o `sync` descobre pela API. |
 
 ### Vault
 
@@ -84,6 +85,32 @@ Lidas por `config.py`. Valem no host e dentro do container.
 |---|---|---|
 | `ENRICH_LINKS` | `1` | Abrir as páginas para descobrir do que tratam |
 | `ENRICH_TIMEOUT` | `10` | Segundos por página |
+
+### Notas atômicas
+
+| Variável | Padrão | O quê |
+|---|---|---|
+| `LINK_NOTES` | `1` | Escrever uma nota por link em `50_LINKS/` |
+
+Com `LINK_NOTES=1` o bullet do diário fica magro e aponta para a nota; com `0` ele
+continua rico, com resumo e conceitos embutidos, como era antes da camada existir.
+Desligar não apaga nada do que já foi escrito.
+
+#### O link para a mensagem original
+
+`GET /channels/{id}/messages` **não** devolve `guild_id` em cada mensagem. O `sync`
+resolve isso com uma consulta por canal por execução; o `migrar` é offline por
+desenho e depende de `DISCORD_GUILD_IDS`.
+
+Sem essa config, captura antiga fica com `channels/@me/...` — que não abre num canal
+de servidor. Com ela, `dlb migrar --force` reconstrói o link certo nas notas de
+`50_LINKS/`. As notas de `10_FONTES/` **continuam** com o valor como foi capturado:
+a fonte não se corrige (invariante 9 do ESQUEMA), a correção mora na camada derivada.
+
+A pasta `50_LINKS/` **não** entra em `validate_vault()`: um vault que ainda não foi
+emendado continua funcionando, e a pasta é criada na primeira escrita. Mas antes de
+ligar isto num vault novo, emende o `90_META/ESQUEMA.md` dele — `tipo: link` e as
+propriedades `triagem`, `dominio` e `categoria` precisam estar registradas.
 
 ### Marcação no Discord
 

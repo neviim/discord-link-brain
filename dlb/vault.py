@@ -3,7 +3,8 @@
 Divisão de camadas que este projeto assume:
 
   10_FONTES/  captura crua e imutável do dia (todos os links, com autor e hora)
-  40_DIARIO/  o resumo classificado do dia — registro cronológico
+  50_LINKS/   uma nota atômica por link — o cartão de referência e a fila de triagem
+  40_DIARIO/  o recorte do dia, apontando para as notas atômicas
   30_MOC/     um MOC de navegação que junta as capturas e as liga ao índice
 
 O que este projeto NÃO faz: criar páginas em 20_WIKI/. Compilar conceito é
@@ -18,12 +19,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import frontmatter
-from .models import LinkNote
+from .extract import host_of
+from .models import TRIAGEM_INICIAL, LinkNote
 
 MOC_NAME = "MOC - Captura Discord"
 FONTE_TRAILER = "## Páginas compiladas desta fonte"
 SECTION_MARK = "<!-- discord-link-brain -->"
 CANDIDATOS_HEADER = "### Candidatos a página no wiki"
+LINKS_DIR = "50_LINKS"
+
+# Fronteira contratual na nota de link: daqui para baixo é do humano, e nem
+# `--force` reescreve. É o que torna a triagem segura.
+MINHAS_NOTAS = "## Minhas notas"
+
+# Nome de arquivo cabe folgado nos 255 bytes do sistema com este teto — o maior
+# título real medido no vault tem 82 caracteres.
+TITULO_MAX = 100
 
 
 @dataclass
@@ -46,10 +57,32 @@ def fonte_name(channel_label: str, day: str) -> str:
     return f"FONTE - Discord {sanitize(channel_label)} - {day}"
 
 
+def titulo_de_arquivo(titulo: str, dominio: str = "") -> str:
+    """Título de página como nome de arquivo legível.
+
+    Não é `sanitize()`: ela **apaga** `/` e `:`, e aí
+    `cosmtrek/mindwalk` viraria `cosmtrekmindwalk`. Aqui o separador é trocado,
+    não removido — o nome é o texto do wikilink e precisa continuar legível.
+    Medido no vault: 10 dos 70 títulos têm `:`, `|` ou `?`, então este caminho é
+    a regra, não a exceção.
+    """
+    nome = titulo.replace("/", "-").replace("\\", "-")
+    nome = nome.replace(":", " -")                 # "CS25: X" -> "CS25 - X"
+    nome = re.sub(r'[*?"<>|#\[\]]', "", nome)      # quebram wikilink ou o FS
+    nome = re.sub(r"\s+", " ", nome).strip()
+    if len(nome) > TITULO_MAX:                     # corta em fronteira de palavra
+        nome = nome[:TITULO_MAX].rsplit(" ", 1)[0]
+    # Ponto ou espaço no fim quebra no Windows, e o vault sincroniza.
+    nome = nome.strip(" -.\u2013\u2014")
+    return nome or sanitize(dominio) or "link"
+
+
 class Vault:
     def __init__(self, root: Path, dry_run: bool = False):
         self.root = root
         self.dry_run = dry_run
+        self._wiki_pages: dict[str, str] | None = None
+        self._link_notes: dict[str, Path] | None = None
 
     # ------------------------------------------------------------------ util
 
@@ -80,11 +113,18 @@ class Vault:
         return encontradas
 
     def wiki_pages(self) -> dict[str, str]:
-        """Mapa nome-normalizado → nome real das páginas de 20_WIKI/."""
-        pages: dict[str, str] = {}
-        for md in (self.root / "20_WIKI").glob("*.md"):
-            pages[md.stem.casefold()] = md.stem
-        return pages
+        """Mapa nome-normalizado → nome real das páginas de 20_WIKI/.
+
+        Memoizado: `link_or_candidate` chama isto **por conceito**, e a migração
+        são 70 notas × ~3 conceitos. O `Vault` vive uma execução e o `20_WIKI/`
+        não muda durante ela, então um glob basta.
+        """
+        if self._wiki_pages is None:
+            self._wiki_pages = {
+                md.stem.casefold(): md.stem
+                for md in (self.root / "20_WIKI").glob("*.md")
+            }
+        return self._wiki_pages
 
     def link_or_candidate(self, conceito: str) -> tuple[str, bool]:
         """Wikilink só para página que existe — link pendurado derruba o lint."""
@@ -92,6 +132,251 @@ class Vault:
         if real:
             return f"[[{real}]]", True
         return f"{conceito} *(candidato)*", False
+
+
+    # -------------------------------------------------------------- 50_LINKS
+
+    def link_notes_by_url(self) -> dict[str, Path]:
+        """Mapa URL canônica → caminho da nota, lido de `50_LINKS/`.
+
+        Por regex na linha `url:` e não com `yaml.safe_load`: é barato, e
+        sobrevive a uma nota cujo frontmatter alguém quebrou editando à mão.
+
+        É este índice — e não o nome do arquivo — que dá a idempotência. Você
+        pode renomear a nota no Obsidian que ela continua sendo encontrada.
+        """
+        if self._link_notes is not None:
+            return self._link_notes
+        achadas: dict[str, Path] = {}
+        for path in sorted((self.root / LINKS_DIR).glob("*.md")):
+            try:
+                texto = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            m = re.search(r"^url:\s*(\S+)\s*$", texto, re.MULTILINE)
+            if m:
+                achadas.setdefault(m.group(1).strip("\"'"), path)
+        self._link_notes = achadas
+        return achadas
+
+    def _nome_da_nota(self, note: LinkNote, dominio: str, ocupados: set[str]) -> str:
+        """Nome de arquivo estável para uma nota de link.
+
+        A data na frente dá ordenação cronológica e desambigua o mesmo título
+        capturado em dias diferentes. Medido: zero colisões nos 70 links atuais,
+        então o sufixo é rede de segurança.
+
+        Quando dois URLs distintos rendem o mesmo nome no mesmo dia, o sufixo
+        vem de um hash da URL — **não** de um contador `(2)`, que dependeria da
+        ordem de processamento e daria nome diferente a cada execução.
+        """
+        base = f"{note.hit.day} {titulo_de_arquivo(note.titulo, dominio)}"
+        if base not in ocupados:
+            return base
+        import hashlib
+
+        curto = hashlib.sha1(note.hit.url.encode("utf-8")).hexdigest()[:4]
+        return f"{base} ({curto})"
+
+    def _meta_link(self, note: LinkNote, channel_label: str, dominio: str) -> dict:
+        fonte = fonte_name(channel_label, note.hit.day)
+        meta = {
+            "tipo": "link",
+            "status": "semente",
+            "triagem": TRIAGEM_INICIAL,
+            "criado": note.hit.day,
+            "atualizado": note.hit.day,
+            "autor": note.hit.author,
+            "url": note.hit.url,
+            "capturado": note.hit.day,
+            "dominio": dominio,
+            "categoria": note.categoria,
+            # Sai vazia de propósito: aparece no painel de propriedades do
+            # Obsidian e fica preenchível com um clique. Ausente != zero, e o
+            # pipeline nunca escreve valor aqui.
+            "nota": None,
+            "tags": [note.area],
+            # Aresta para cima incondicional. É ela que garante o invariante 2
+            # (zero dead-ends) mesmo numa nota sem conceito e sem relação.
+            "parte-de": [f"[[{MOC_NAME}]]"],
+            "fonte": [f"[[{fonte}]]"],
+        }
+        # O título completo como alias, só quando o nome do arquivo é versão
+        # encurtada dele — senão é ruído. É o que mantém o wikilink escrevível
+        # de cabeça, que é o motivo pelo qual o ESQUEMA proíbe id numérico.
+        nome = f"{note.hit.day} {titulo_de_arquivo(note.titulo, dominio)}"
+        if note.titulo and note.titulo != nome[len(note.hit.day) + 1:]:
+            meta["aliases"] = [note.titulo]
+
+        relacionados = [f"[[{note.hit.day}]]"]
+        for conceito in note.conceitos:
+            texto, existe = self.link_or_candidate(conceito)
+            if existe:
+                relacionados.append(texto)
+        meta["relacionado"] = relacionados
+        return meta
+
+    def _corpo_link(self, note: LinkNote, channel_label: str) -> str:
+        hit = note.hit
+        fonte = fonte_name(channel_label, hit.day)
+        linhas = [f"# {note.titulo or hit.url}", "", SECTION_MARK, ""]
+
+        if note.resumo:
+            linhas += [f"> {note.resumo}", ""]
+        linhas += [f"<{hit.url}>", ""]
+
+        if note.porque_importa:
+            linhas += ["## Por que importa", "", note.porque_importa, ""]
+
+        # Só os candidatos entram aqui. Conceito que já tem página vive em
+        # `relacionado` — manter nos dois lugares seria a mesma aresta em duas
+        # cópias, que é o que o ESQUEMA proíbe.
+        candidatos = [c for c in note.conceitos if not self.link_or_candidate(c)[1]]
+        if candidatos:
+            linhas += ["## Conceitos sem página", ""]
+            linhas += [f"- {c}" for c in candidatos]
+            linhas += ["", "#acao/expandir", ""]
+
+        linhas += [
+            "## Contexto da captura",
+            "",
+            f"Postado por **{hit.author}** às **{hit.hhmm}** de **{hit.day}** "
+            f"no canal `#{sanitize(channel_label)}`.",
+            "",
+            f"Fonte crua e cronológica: [[{fonte}]].",
+            "",
+        ]
+        if hit.jump_url:
+            linhas += [f"Mensagem original: {hit.jump_url}", ""]
+        if hit.context:
+            linhas += [f"> {hit.context}", ""]
+
+        linhas += [
+            MINHAS_NOTAS,
+            "",
+            "<!-- Daqui para baixo é seu. O pipeline nunca reescreve nada abaixo "
+            "desta linha, nem com --force. -->",
+            "",
+        ]
+        return "\n".join(linhas)
+
+    def write_link_note(
+        self, channel_label: str, note: LinkNote, force: bool = False
+    ) -> WriteResult:
+        """Uma nota atômica para um link. Idempotente por URL."""
+        dominio = host_of(note.hit.url)
+        existente = self.link_notes_by_url().get(note.hit.url)
+
+        if existente is not None and not force:
+            return WriteResult(existente, "pulado", "link já tem nota")
+
+        if existente is not None:
+            return self._reescrever_link(existente, note, channel_label, dominio)
+
+        ocupados = {p.stem for p in (self.root / LINKS_DIR).glob("*.md")}
+        nome = self._nome_da_nota(note, dominio, ocupados)
+        path = self.root / LINKS_DIR / f"{nome}.md"
+        meta = self._meta_link(note, channel_label, dominio)
+        self._write(path, frontmatter.compose(meta, self._corpo_link(note, channel_label)))
+        if self._link_notes is not None:
+            self._link_notes[note.hit.url] = path
+        return WriteResult(path, "criado", dominio)
+
+    def _reescrever_link(
+        self, path: Path, note: LinkNote, channel_label: str, dominio: str
+    ) -> WriteResult:
+        """`--force` refaz o miolo gerado e preserva tudo que é do humano."""
+        texto = path.read_text(encoding="utf-8", errors="replace")
+        meta_antiga, corpo_antigo = frontmatter.split(texto)
+
+        if MINHAS_NOTAS not in corpo_antigo:
+            # Nota escrita à mão, sem a fronteira. Não há como distinguir o que é
+            # gerado do que é seu, então não se toca.
+            return WriteResult(path, "pulado", "nota sem a fronteira do pipeline")
+
+        meta = self._meta_link(note, channel_label, dominio)
+        # O que é do humano sobrevive: triagem, avaliação, maturidade e as
+        # relações que você acrescentou à mão.
+        for chave in ("triagem", "status", "nota"):
+            if meta_antiga.get(chave) is not None:
+                meta[chave] = meta_antiga[chave]
+        meta["criado"] = meta_antiga.get("criado", meta["criado"])
+        for valor in meta_antiga.get("relacionado") or []:
+            frontmatter.add_to_list(meta, "relacionado", valor)
+        for valor in meta_antiga.get("aliases") or []:
+            frontmatter.add_to_list(meta, "aliases", valor)
+
+        cauda = corpo_antigo.split(MINHAS_NOTAS, 1)[1]
+        corpo = self._corpo_link(note, channel_label)
+        corpo = corpo.split(MINHAS_NOTAS, 1)[0] + MINHAS_NOTAS + cauda
+        self._write(path, frontmatter.compose(meta, corpo))
+        return WriteResult(path, "atualizado", dominio)
+
+    def write_link_notes(
+        self, channel_label: str, notes: list[LinkNote], force: bool = False
+    ) -> list[WriteResult]:
+        return [self.write_link_note(channel_label, n, force) for n in notes]
+
+    def link_note_names(self, notes: list[LinkNote]) -> dict[str, str]:
+        """URL → nome da nota (sem `.md`), para o diário montar o wikilink."""
+        indice = self.link_notes_by_url()
+        return {n.hit.url: indice[n.hit.url].stem for n in notes if n.hit.url in indice}
+
+
+    def contar_triagem(self) -> dict[str, int]:
+        """Quantas notas de link em cada estado de triagem, na ordem do ciclo."""
+        from .models import TRIAGENS
+
+        contagem = {k: 0 for k in TRIAGENS}
+        for path in (self.root / LINKS_DIR).glob("*.md"):
+            try:
+                texto = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            m = re.search(r"^triagem:\s*(\S+)\s*$", texto, re.MULTILINE)
+            valor = m.group(1).strip("\"'") if m else "?"
+            contagem[valor] = contagem.get(valor, 0) + 1
+        return {k: v for k, v in contagem.items() if v}
+
+    def diario_sections(self) -> list[tuple[str, Path, str]]:
+        """(dia, caminho, texto da seção) de cada seção escrita pelo pipeline.
+
+        Só o que tem o `SECTION_MARK`: prosa que você escreveu na daily fica
+        invisível para quem chama isto.
+        """
+        achadas: list[tuple[str, Path, str]] = []
+        for path in sorted((self.root / "40_DIARIO").glob("*.md")):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.stem):
+                continue
+            try:
+                texto = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            _, body = frontmatter.split(texto)
+            for m in re.finditer(r"^## Links do Discord — #.*$", body, re.MULTILINE):
+                resto = body[m.end():]
+                fim = resto.find("\n## ")
+                secao = resto if fim == -1 else resto[:fim]
+                if SECTION_MARK in secao:
+                    achadas.append((path.stem, path, secao))
+        return achadas
+
+    def links_sem_nota(self) -> list[tuple[str, str]]:
+        """(dia, url) de link que está no diário e não tem nota em `50_LINKS/`.
+
+        É o número que o `doctor` mostra e o `migrar` conserta. Existe porque a
+        escrita não é transacional: se o processo morre entre a fonte e a nota
+        atômica, o dedup por `10_FONTES` nunca mais recria aquele link.
+        """
+        com_nota = self.link_notes_by_url()
+        pendentes: list[tuple[str, str]] = []
+        vistos: set[str] = set()
+        for dia, _path, secao in self.diario_sections():
+            for url in re.findall(r"\]\((https?://[^)\s]+)\)", secao):
+                if url not in com_nota and url not in vistos:
+                    vistos.add(url)
+                    pendentes.append((dia, url))
+        return pendentes
 
     # ------------------------------------------------------------- 10_FONTES
 
@@ -213,7 +498,7 @@ class Vault:
         novas = [n for n in notes if n.hit.url not in ja_tem]
         if not novas:
             return WriteResult(path, "pulado", "seção do dia já tem estes links")
-        bloco, candidatos = self._render_lote(day, novas)
+        bloco, candidatos = self._render_lote(day, novas, self.link_note_names(novas))
         notes = novas
 
         if CANDIDATOS_HEADER in secao:
@@ -235,7 +520,9 @@ class Vault:
         self._write(path, frontmatter.compose(meta, body[:inicio] + nova_secao + depois))
         return WriteResult(path, "atualizado", f"+{len(notes)} links")
 
-    def _render_lote(self, day: str, notes: list[LinkNote]) -> str:
+    def _render_lote(
+        self, day: str, notes: list[LinkNote], nomes: dict[str, str] | None = None
+    ) -> str:
         """(bloco, candidatos) de um lote, sem o cabeçalho da seção."""
         por_cat: dict[str, list[LinkNote]] = {}
         for note in notes:
@@ -245,7 +532,7 @@ class Vault:
         candidatos: list[str] = []
         for categoria in sorted(por_cat):
             linhas += [f"### {categoria}", ""]
-            linhas += self._render_notes(por_cat[categoria], candidatos)
+            linhas += self._render_notes(por_cat[categoria], candidatos, nomes)
             linhas.append("")
         return "\n".join(linhas).rstrip() + "\n\n", candidatos
 
@@ -277,7 +564,12 @@ class Vault:
     ) -> WriteResult:
         path = self.root / "40_DIARIO" / f"{day}.md"
         fonte = fonte_name(channel_label, day)
-        section = self._render_section(channel_label, day, notes, fonte)
+        # Os nomes vêm do índice de `50_LINKS/`, então as notas atômicas têm que
+        # já estar escritas — é por isso que `cmd_sync` chama write_link_notes
+        # antes daqui. Sem elas o dicionário sai vazio e o bullet cai na forma
+        # rica, que é o comportamento correto para `LINK_NOTES=0`.
+        nomes = self.link_note_names(notes)
+        section = self._render_section(channel_label, day, notes, fonte, nomes)
         header = f"## Links do Discord — #{sanitize(channel_label)}"
 
         if path.exists():
@@ -325,29 +617,60 @@ class Vault:
         )
         return pattern.sub("", body).rstrip() + "\n"
 
-    def _render_notes(self, notes: list[LinkNote], candidates: list[str]) -> list[str]:
-        """Os bullets de uma categoria. `candidates` acumula conceito sem página."""
+    def _render_notes(
+        self,
+        notes: list[LinkNote],
+        candidates: list[str],
+        nomes: dict[str, str] | None = None,
+    ) -> list[str]:
+        """Os bullets de uma categoria. `candidates` acumula conceito sem página.
+
+        Duas formas, e a escolha não é estética. Quando o link tem nota atômica
+        em `50_LINKS/`, o bullet só aponta para ela: resumo, por-que-importa e
+        conceitos moram lá, e repetir aqui seria a mesma prosa em duas cópias que
+        divergem no primeiro `--force`. Quando não tem (`LINK_NOTES=0`), o bullet
+        continua rico — senão esse conteúdo não existiria em lugar nenhum.
+
+        Em **ambas** a URL sai dentro de `](...)`. Isso não é decoração: é a
+        chave de idempotência que `_append_diario` usa para saber que este link
+        já está na seção. Trocar por `<url>` ou por wikilink puro faz o segundo
+        lote do dia ser escrito duas vezes ou sumir em silêncio — o bug que
+        `TestLotePosteriorNoMesmoDia` existe para impedir.
+        """
+        nomes = nomes or {}
         lines: list[str] = []
         for note in notes:
-            titulo = note.titulo.replace("[", "(").replace("]", ")")
-            lines.append(f"- **[{titulo}]({note.hit.url})** — {note.resumo}")
-            if note.porque_importa:
-                lines.append(f"  *Por que importa:* {note.porque_importa}")
+            nome = nomes.get(note.hit.url)
+            rendered = []
+            for conceito in note.conceitos:
+                text, exists = self.link_or_candidate(conceito)
+                rendered.append(text)
+                if not exists:
+                    candidates.append(conceito)
 
-            if note.conceitos:
-                rendered = []
-                for conceito in note.conceitos:
-                    text, exists = self.link_or_candidate(conceito)
-                    rendered.append(text)
-                    if not exists:
-                        candidates.append(conceito)
-                lines.append(f"  Conceitos: {', '.join(rendered)}")
+            if nome:
+                lines.append(f"- [[{nome}]] — {note.resumo}")
+            else:
+                titulo = note.titulo.replace("[", "(").replace("]", ")")
+                lines.append(f"- **[{titulo}]({note.hit.url})** — {note.resumo}")
+                if note.porque_importa:
+                    lines.append(f"  *Por que importa:* {note.porque_importa}")
+                if rendered:
+                    lines.append(f"  Conceitos: {', '.join(rendered)}")
 
-            lines.append(f"  <sub>{note.hit.hhmm} · {note.hit.author} · #{note.area}</sub>")
+            rodape = f"{note.hit.hhmm} · {note.hit.author} · #{note.area}"
+            if nome:
+                rodape += f" · [abrir]({note.hit.url})"
+            lines.append(f"  <sub>{rodape}</sub>")
         return lines
 
     def _render_section(
-        self, channel_label: str, day: str, notes: list[LinkNote], fonte: str
+        self,
+        channel_label: str,
+        day: str,
+        notes: list[LinkNote],
+        fonte: str,
+        nomes: dict[str, str] | None = None,
     ) -> str:
         by_cat: dict[str, list[LinkNote]] = {}
         for note in notes:
@@ -366,7 +689,7 @@ class Vault:
 
         for categoria in sorted(by_cat):
             lines += [f"### {categoria}", ""]
-            lines += self._render_notes(by_cat[categoria], candidates)
+            lines += self._render_notes(by_cat[categoria], candidates, nomes)
             lines.append("")
 
         if candidates:

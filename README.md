@@ -31,8 +31,14 @@ Respeitando o contrato em `90_META/ESQUEMA.md`:
 | Camada | Arquivo | Conteúdo |
 |---|---|---|
 | `10_FONTES/` | `FONTE - Discord <canal> - AAAA-MM-DD.md` | Captura crua e **imutável**: todo link do dia, com autor, hora, comentário original e link para a mensagem no Discord. Só é reescrito com `--force`. |
-| `40_DIARIO/` | `AAAA-MM-DD.md` | O recorte já processado: links agrupados por categoria, cada um com resumo, por que importa e conceitos. Se a nota do dia já existir, a seção é **acrescentada** — nada do que você escreveu é perdido. |
-| `30_MOC/` | `MOC - Captura Discord.md` | Hub de navegação: lista as capturas por dia e se registra em `MOC - Índice`. |
+| `50_LINKS/` | `AAAA-MM-DD <título>.md` | **Uma nota por link**: resumo, por que importa, conceitos, domínio, e um campo `triagem` para você classificar depois. Cada link vira nó de primeira classe — aparece no grafo, tem backlink, é filtrável. |
+| `40_DIARIO/` | `AAAA-MM-DD.md` | O recorte do dia: links agrupados por categoria, cada um apontando para sua nota. Se a nota do dia já existir, a seção é **acrescentada** — nada do que você escreveu é perdido. |
+| `30_MOC/` | `MOC - Captura Discord.md` + `Links.base` | Hub de navegação: as capturas por dia, as views do Bases, e se registra em `MOC - Índice`. |
+
+A nota de link é o único artefato que **você edita por desenho**. `triagem`
+(`inbox` → `lido` → `aplicado` \| `descartado`), `nota` (1–5) e tudo abaixo de
+`## Minhas notas` são seus, e nem `--force` reescreve. Ver o ritual de triagem em
+[docs/OPERACAO.md](docs/OPERACAO.md).
 
 **O que ele deliberadamente NÃO faz: criar páginas em `20_WIKI/`.** Compilar
 conceito é trabalho curado (ver a skill `obsidian-segundo-cerebro`). Os conceitos
@@ -114,6 +120,10 @@ python3 -m dlb sync --since 7
 
 # um dia específico
 python3 -m dlb sync --day 2026-08-15
+
+# cria a nota atômica dos links já capturados — sem LLM, sem rede
+python3 -m dlb migrar --dry-run
+python3 -m dlb migrar
 
 # ver o que faria sem escrever nada
 python3 -m dlb sync --since 3 --dry-run

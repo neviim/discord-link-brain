@@ -78,3 +78,13 @@ CATEGORIAS = [
 # Tags de área do vault (ver 90_META/ESQUEMA.md — namespace fechado).
 # Para acrescentar uma área nova (ex.: area/dev), altere o ESQUEMA primeiro.
 AREAS = ["area/ia", "area/buzz", "area/pkm", "area/gestao"]
+
+# Eixo de triagem da nota de link (ver 90_META/ESQUEMA.md). Independente de
+# `status`, que é maturidade da nota: um link `descartado` pode estar `maduro`.
+# Para acrescentar um valor, mude o ESQUEMA primeiro.
+TRIAGENS = ["inbox", "lido", "aplicado", "descartado"]
+
+# O estado em que toda nota de link nasce. O pipeline nunca escreve outro valor —
+# promover é trabalho humano, e é justamente o trabalho que a camada existe para
+# tornar visível.
+TRIAGEM_INICIAL = "inbox"

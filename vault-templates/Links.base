@@ -1,0 +1,96 @@
+# Painéis da camada 50_LINKS/, gerada pelo discord-link-brain.
+# Escrito à mão e versionado em vault-templates/ do repositório do pipeline.
+# O pipeline NÃO reescreve este arquivo: ajuste de coluna e de view é seu.
+filters:
+  and:
+    - file.inFolder("50_LINKS")
+    - tipo == "link"
+
+properties:
+  file.name:
+    displayName: Link
+  dominio:
+    displayName: Fonte
+  categoria:
+    displayName: Tipo
+  capturado:
+    displayName: Capturado
+  triagem:
+    displayName: Triagem
+  nota:
+    displayName: Nota
+
+views:
+  # A fila de trabalho. É esta view que diz se o sistema está vivo ou virou
+  # depósito: se ela só cresce, a triagem não está acontecendo.
+  - type: table
+    name: Inbox
+    filters:
+      and:
+        - triagem == "inbox"
+    order:
+      - file.name
+      - dominio
+      - categoria
+      - capturado
+    sort:
+      - property: capturado
+        direction: DESC
+
+  # Onde seu interesse realmente está — agrupado por tipo de material.
+  - type: table
+    name: Por tema
+    groupBy:
+      property: categoria
+      direction: ASC
+    order:
+      - file.name
+      - categoria
+      - dominio
+      - triagem
+      - capturado
+    sort:
+      - property: capturado
+        direction: DESC
+
+  # O acervo de valor comprovado: o que virou uso real.
+  - type: table
+    name: Aplicados
+    filters:
+      and:
+        - triagem == "aplicado"
+    order:
+      - file.name
+      - nota
+      - dominio
+      - capturado
+    sort:
+      - property: nota
+        direction: DESC
+
+  # De onde vem o que você salva. Serve para decidir o que assinar por RSS.
+  - type: table
+    name: Fontes
+    groupBy:
+      property: dominio
+      direction: ASC
+    order:
+      - file.name
+      - dominio
+      - categoria
+      - triagem
+      - capturado
+    sort:
+      - property: capturado
+        direction: DESC
+
+  # Reconhecer que algo não serviu é trabalho legítimo — e vale poder revisar.
+  - type: table
+    name: Descartados
+    filters:
+      and:
+        - triagem == "descartado"
+    order:
+      - file.name
+      - dominio
+      - capturado

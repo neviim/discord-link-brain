@@ -7,6 +7,7 @@
 #
 #   ./dlb.sh dev doctor              checa config, vault e Discord (vault :ro)
 #   ./dlb.sh dev sync --dry-run      ensaio, não escreve nada
+#   ./dlb.sh dev migrar --dry-run    nota atômica do que já está no vault
 #   ./dlb.sh dev test                suíte de testes
 #   ./dlb.sh dev shell               bash dentro do container
 #   ./dlb.sh prod up                 sobe o agendador em background

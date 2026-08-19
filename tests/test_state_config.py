@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import dlb.config as mod_config
 from dlb.config import Config, ConfigError, load_dotenv
 from dlb.state import ChannelState, Store
 
@@ -70,8 +71,10 @@ class TestStore(unittest.TestCase):
 class ConfigCase(unittest.TestCase):
     CHAVES = (
         "DISCORD_TOKEN", "DISCORD_TOKEN_TYPE", "DISCORD_CHANNEL_IDS",
-        "DISCORD_CHANNEL_NAMES", "OBSIDIAN_VAULT", "TIMEZONE", "LLM_BACKEND",
+        "DISCORD_CHANNEL_NAMES", "DISCORD_GUILD_IDS", "OBSIDIAN_VAULT",
+        "TIMEZONE", "LLM_BACKEND",
         "MARK_PROCESSED", "PROCESSED_EMOJI", "DUPLICATE_EMOJI", "ENRICH_LINKS",
+        "LINK_NOTES",
     )
 
     def setUp(self):
@@ -210,6 +213,42 @@ class TestDotenv(ConfigCase):
 
     def test_arquivo_ausente_nao_e_erro(self):
         load_dotenv(Path("/tmp/nao-existe-mesmo-.env"))
+
+
+class TestConfigDaCamadaDeLinks(ConfigCase):
+    """As duas chaves novas. Sem elas em CHAVES, um `.env` local com
+    `LINK_NOTES=0` faria teste passar na máquina e falhar em CI."""
+
+    def setUp(self):
+        super().setUp()
+        os.environ.update(DISCORD_TOKEN="x", DISCORD_CHANNEL_IDS="1")
+        self._dotenv = mod_config.load_dotenv
+        mod_config.load_dotenv = lambda *a, **k: None
+
+    def tearDown(self):
+        mod_config.load_dotenv = self._dotenv
+        super().tearDown()
+
+    def test_link_notes_ligado_por_padrao(self):
+        self.assertTrue(Config.from_env().link_notes)
+
+    def test_link_notes_desligavel_por_ambiente(self):
+        for valor in ("0", "false", "no"):
+            with self.subTest(valor):
+                os.environ["LINK_NOTES"] = valor
+                self.assertFalse(Config.from_env().link_notes)
+
+    def test_guild_ids_vem_como_mapa_canal_para_servidor(self):
+        os.environ["DISCORD_GUILD_IDS"] = "111:999, 222:888"
+        self.assertEqual(Config.from_env().guild_ids, {"111": "999", "222": "888"})
+
+    def test_guild_ids_ausente_e_mapa_vazio(self):
+        """Sem a config, `migrar` não inventa servidor — deixa o link como está."""
+        self.assertEqual(Config.from_env().guild_ids, {})
+
+    def test_par_malformado_e_ignorado_em_silencio(self):
+        os.environ["DISCORD_GUILD_IDS"] = "111:999,lixo,:,"
+        self.assertEqual(Config.from_env().guild_ids, {"111": "999"})
 
 
 if __name__ == "__main__":

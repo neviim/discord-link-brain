@@ -12,6 +12,7 @@ from .config import Config, ConfigError
 from .discord_client import DiscordClient, DiscordError, ja_marcada, snowflake_for
 from .enrich import fetch_meta
 from .extract import day_of_message, extract_links, group_by_day
+from .migrar import migrar
 from .models import LinkHit, LinkNote, PageMeta
 from .state import ChannelState, Store
 from .vault import Vault
@@ -72,11 +73,27 @@ def _marcar(
             return  # falhou uma, vai falhar todas — não martela a API
 
 
+def _guild_de(client: DiscordClient, cache: dict, channel_id: str) -> str | None:
+    """Resolve e memoiza o servidor do canal. Falha não derruba a execução.
+
+    `GET /channels/{id}/messages` não devolve `guild_id` por mensagem, e sem ele
+    `extract_links` cai no default `@me` — que produz link de mensagem que não
+    abre em canal de servidor.
+    """
+    if channel_id not in cache:
+        try:
+            cache[channel_id] = client.guild_id(channel_id)
+        except DiscordError:
+            cache[channel_id] = None
+    return cache[channel_id]
+
+
 def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
     cfg.validate_vault()
     client = DiscordClient(cfg.auth_header)
     store = Store(cfg.state_dir)
     vault = Vault(cfg.vault_path, dry_run=args.dry_run)
+    guilds: dict[str, str | None] = {}
 
     if args.dry_run:
         _log("MODO SECO — nada será escrito no vault.\n")
@@ -84,6 +101,7 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
     # MOC e índice só são tocados quando existe nota nova para registrar. Sem
     # link novo, a execução não encosta no vault.
     estado = {"moc_pronto": False, "arquivadas": None}
+    guilds: dict[str, str | None] = {}
 
     def preparar_moc() -> None:
         if estado["moc_pronto"]:
@@ -151,7 +169,11 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
                 continue
 
         hits = extract_links(
-            messages, channel_id, tz=cfg.timezone, include_bots=args.include_bots
+            messages,
+            channel_id,
+            guild_id=_guild_de(client, guilds, channel_id),
+            tz=cfg.timezone,
+            include_bots=args.include_bots,
         )
         if args.day:
             hits = [h for h in hits if h.day == args.day]
@@ -189,6 +211,11 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
 
             preparar_moc()
             _log("    " + str(vault.write_fonte(label, day, notes, force=args.force)))
+            # Nota atômica antes do diário: o bullet do diário aponta para ela por
+            # wikilink, e o nome do arquivo só existe depois de escrita.
+            if cfg.link_notes:
+                for r in vault.write_link_notes(label, notes, force=args.force):
+                    _log("    " + str(r))
             _log("    " + str(vault.write_diario(label, day, notes, force=args.force)))
             _log("    " + str(vault.register_capture(label, day, len(notes))))
 
@@ -287,7 +314,11 @@ def cmd_backfill(cfg: Config, args: argparse.Namespace) -> int:
             candidatas = [m for m in messages if not ja_marcada(m, *cfg.marcas)]
 
         hits = extract_links(
-            candidatas, channel_id, tz=cfg.timezone, include_bots=args.include_bots
+            candidatas,
+            channel_id,
+            guild_id=_guild_de(client, guilds, channel_id),
+            tz=cfg.timezone,
+            include_bots=args.include_bots,
         )
         repetidos = [h for h in hits if h.url in arquivadas]
         hits = [h for h in hits if h.url not in arquivadas]
@@ -336,6 +367,9 @@ def cmd_backfill(cfg: Config, args: argparse.Namespace) -> int:
                 moc_pronto = True
 
             _log("    " + str(vault.write_fonte(label, day, notes, force=False)))
+            if cfg.link_notes:
+                for r in vault.write_link_notes(label, notes, force=False):
+                    _log("    " + str(r))
             _log("    " + str(vault.write_diario(label, day, notes, force=False)))
             _log("    " + str(vault.register_capture(label, day, len(notes))))
             arquivadas.update(h.url for h in day_hits)
@@ -400,6 +434,38 @@ def cmd_semana(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_migrar(cfg: Config, args: argparse.Namespace) -> int:
+    """Cria a nota atômica dos links que já estão no vault. Sem LLM, sem rede."""
+    cfg.validate_vault()
+    vault = Vault(cfg.vault_path, dry_run=args.dry_run)
+
+    rel = migrar(
+        vault,
+        timezone=cfg.timezone,
+        dia=args.day,
+        guilds=cfg.guild_ids,
+        force=args.force,
+        tocar_diario=not args.no_diario,
+        limite=args.limite,
+        log=_log,
+    )
+
+    _log(
+        f"\n{rel.criados} criada(s) · {rel.atualizados} atualizada(s) · "
+        f"{rel.pulados} pulada(s) · {rel.diarios_tocados} diário(s) referenciado(s)"
+    )
+    if rel.avisos:
+        _log(f"\n{len(rel.avisos)} aviso(s):")
+        for aviso in rel.avisos:
+            print(f"  {aviso}", file=sys.stderr)
+    if args.dry_run:
+        _log("\n(--dry-run: nada foi escrito)")
+    else:
+        _log("\nRode `obsidian reload`, espere ~3s, e depois o lint.")
+    # Aviso não é falha: um bullet editado à mão não invalida os outros 69.
+    return 0
+
+
 def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     ok = True
 
@@ -414,6 +480,24 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     _log(f"llm backend     {cfg.llm_backend} (modelo {cfg.llm_model})")
     _log(f"fuso            {cfg.timezone}")
     _log(f"enriquecimento  {'ligado' if cfg.enrich else 'desligado'}")
+
+    if cfg.link_notes:
+        vault = Vault(cfg.vault_path)
+        indice = vault.link_notes_by_url()
+        triagens = vault.contar_triagem()
+        resumo = " · ".join(f"{v} {k}" for k, v in triagens.items()) or "nenhuma"
+        _log(f"notas de link   ligado · 50_LINKS/ ({len(indice)} notas)")
+        _log(f"triagem         {resumo}")
+        # O número que diz se a camada está viva ou virou depósito: link no
+        # diário que nunca ganhou nota atômica.
+        pendentes = vault.links_sem_nota()
+        if pendentes:
+            _log(
+                f"                {len(pendentes)} link(s) no diário sem nota "
+                "atômica — rode `dlb migrar`"
+            )
+    else:
+        _log("notas de link   desligado (LINK_NOTES=0)")
     _log(
         f"marcação        {cfg.processed_emoji} arquivado agora · "
         f"{cfg.duplicate_emoji} já documentado  (precisa de 'Adicionar reações')"
@@ -493,6 +577,23 @@ def build_parser() -> argparse.ArgumentParser:
     semana.add_argument("--days", type=int, default=7)
     semana.add_argument("--out", help="arquivo de saída (padrão: stdout)")
     semana.set_defaults(func=cmd_semana)
+
+    mig = sub.add_parser(
+        "migrar",
+        help="cria a nota atômica dos links já capturados (sem LLM, sem rede)",
+    )
+    mig.add_argument("--day", metavar="AAAA-MM-DD", help="migra apenas este dia")
+    mig.add_argument("--dry-run", action="store_true", help="não escreve nada")
+    mig.add_argument(
+        "--force", action="store_true",
+        help="refaz o miolo de nota já existente (preserva triagem, nota e '## Minhas notas')",
+    )
+    mig.add_argument(
+        "--no-diario", action="store_true",
+        help="não insere a referência à nota no bullet do diário (deixa as notas órfãs)",
+    )
+    mig.add_argument("--limite", type=int, metavar="N", help="para depois de N notas")
+    mig.set_defaults(func=cmd_migrar)
 
     doctor = sub.add_parser("doctor", help="checa configuração, vault e acesso ao Discord")
     doctor.set_defaults(func=cmd_doctor)

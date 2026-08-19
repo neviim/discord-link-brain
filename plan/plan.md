@@ -1,3 +1,30 @@
+> **Estado: fases 1–3 implementadas em 2026-08-18.**
+>
+> O que saiu diferente do proposto aqui, e por quê — o detalhe está em
+> `docs/DECISOES.md`:
+>
+> - **`status: inbox` → propriedade `triagem`.** `status` no vault é eixo de
+>   *maturidade* (`semente|crescendo|maduro`) e é usado pelas 14 páginas de
+>   `20_WIKI/`. Triagem é outro eixo e ganhou propriedade própria.
+> - **`tags: [rust, async]` → wikilink.** O `90_META/ESQUEMA.md` proíbe tag de
+>   assunto ("assunto é trabalho de link"). O pipeline já emitia `conceitos` →
+>   `[[X]]` quando a página existe, `X *(candidato)*` quando não. Reusado.
+> - **A migração também insere referência no bullet antigo.** Sem isso as 70
+>   notas nasceriam órfãs: `parte-de` é aresta saindo e o invariante 3 exige
+>   aresta entrando.
+> - **`dominio` confirmado antes de escrever:** 48 de 70 links (69%) são
+>   `youtube.com` e 8 são `instagram.com` — 80% de duas fontes. A previsão aqui
+>   era 40%; é o dobro.
+> - **5 views no Bases, não 4** (entrou "Descartados": revisar o que se descartou
+>   é trabalho legítimo).
+>
+> Fases 4–6 (síntese semanal, `/buscar`, ressurgimento) seguem pendentes.
+> Decidido para elas: busca com `claude -p` sobre o corpus inteiro em vez de
+> embeddings (Ollama não está instalado, e 70 notas ≈ 50KB cabem num contexto);
+> `/buscar` por polling de `?buscar` reusando `iter_messages()` em vez de gateway.
+
+---
+
 Seu pipeline hoje resolve a **captura**, que é a parte fácil. O problema é o clássico "memória write-only": o link entra, nunca sai. Uma nota diária com 8 URLs cruas é praticamente invisível para busca — daqui a seis meses você não vai lembrar que salvou aquilo, e mesmo que lembre, não vai achar.
 
 O que falta são as camadas entre capturar e usar:## 1. Enriquecer no momento da captura

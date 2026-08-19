@@ -12,8 +12,10 @@ import yaml
 # Ordem canônica das propriedades (ver 90_META/ESQUEMA.md). O que não estiver
 # aqui vai depois, em ordem alfabética.
 KEY_ORDER = [
-    "tipo", "status", "criado", "atualizado",
-    "autor", "url", "capturado",
+    # `triagem` vem junto de `status`: são os dois eixos de estado da nota,
+    # maturidade e fluxo, e ler um sem o outro engana.
+    "tipo", "status", "triagem", "criado", "atualizado",
+    "autor", "url", "capturado", "dominio", "categoria", "nota",
     "aliases", "tags",
     "parte-de", "relacionado", "depende-de", "fonte",
 ]
@@ -38,12 +40,28 @@ def split(text: str) -> tuple[dict, str]:
     return data, body
 
 
+# Caracteres a que o YAML dá significado especial quando abrem um escalar:
+# `-` item de lista, `[{` coleção em linha, `#` comentário, `&*` âncora e alias,
+# `!` tag, `|>` bloco, `?:` chave explícita, `,` separador, `%` diretiva,
+# `'"` citação, `@` e a crase são reservados para uso futuro pela spec.
+#
+# Sem esta lista o estrago é pior que perder o metadado: `safe_load` levanta,
+# `split()` devolve ({}, arquivo inteiro), e a escrita seguinte trata o
+# frontmatter antigo como corpo e prepende um segundo bloco `---`.
+INICIO_ESPECIAL = "-?:,[]{}#&*!|>'\"%@`"
+
+
 def _scalar(value) -> str:
     text = "" if value is None else str(value)
     if text == "":
         return ""
-    if text.startswith("[[") or any(ch in text for ch in ':#"\''):
-        escaped = text.replace('"', '\\"')
+    # Espaço nas pontas some sem aspas, e aí o valor lido não é o escrito.
+    if (
+        text[0] in INICIO_ESPECIAL
+        or any(ch in text for ch in ':#"\'')
+        or text != text.strip()
+    ):
+        escaped = text.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return text
 
