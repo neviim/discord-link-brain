@@ -53,14 +53,15 @@ Estado atual:
 dlb/config.py         100%
 dlb/state.py          100%
 dlb/extract.py         97%
-dlb/vault.py           94%
+dlb/migrar.py          96%
+dlb/vault.py           95%
 dlb/models.py          93%
-dlb/frontmatter.py     85%
+dlb/frontmatter.py     86%
 dlb/classify.py        72%
-dlb/enrich.py          35%   ← o que falta é caminho de rede
-dlb/discord_client.py  27%   ← idem
+dlb/discord_client.py  50%   ← o que falta é caminho de rede
+dlb/enrich.py          35%   ← idem
 dlb/cli.py              0%   ← orquestração; ver DECISOES.md
-TOTAL                  55%
+TOTAL                  64%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que

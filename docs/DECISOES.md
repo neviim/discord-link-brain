@@ -337,7 +337,7 @@ os links voltam a ser o que a fonte diz.
 
 ## O que ainda não foi resolvido
 
-- **`cli.py` sem teste** (329 linhas, 0%). Testá-lo exige encenar Discord, LLM e
+- **`cli.py` sem teste** (615 linhas, 0%). Testá-lo exige encenar Discord, LLM e
   vault ao mesmo tempo. Boa parte do risco está coberta pelas peças embaixo, mas
   a orquestração em si não está.
 - **Cloudflare e X/Twitter** continuam bloqueando a leitura. O link entra com
