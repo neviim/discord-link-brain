@@ -180,10 +180,30 @@ quando passar de 100%, é o momento medido de escrever `_ranquear_embeddings`.
 | `RESSURGIR_N` | `3` | Quantos por dia |
 | `RESSURGIR_CARENCIA` | `180` | Dias antes de o mesmo link poder voltar |
 | `RESSURGIR_RESUMO_MAX` | `220` | Caracteres de resumo na mensagem |
-| `RESSURGIR_CANAL` | primeiro de `DISCORD_CHANNEL_IDS` | Onde postar |
+| `RESSURGIR_CANAL` | primeiro de `DISCORD_CHANNEL_IDS` | Onde postar o ressurgimento |
 | `DLB_RESSURGIR` | `0` | Automático, uma vez por dia (container) |
 | `TEMAS_LIMIAR` | `8` | Links para um conceito ser "tema maduro" |
 | `TEMAS_IGNORAR` | lista embutida | Plataformas a descartar do ranking |
+
+#### Os três canais fazem coisas diferentes
+
+| Variável | O canal serve para |
+|---|---|
+| `DISCORD_CHANNEL_IDS` | o **sync lê** links para arquivar |
+| `RESPONDER_CHANNEL_IDS` | o **responder lê** `?buscar` — e responde **ali mesmo** |
+| `RESSURGIR_CANAL` | o bot **posta sozinho**, uma vez por dia |
+
+Não é "pergunta aqui, resposta ali": a resposta sai como reply no mesmo canal da
+pergunta. O que se separa é **função**, não sentido.
+
+Separar `RESSURGIR_CANAL` serve para o ressurgimento — a única coisa que posta sem
+gatilho seu — não sujar o canal de captura, que é o registro cronológico do que você
+guardou. E porque três links por dia numa aba que você não abre de manhã é o mesmo
+que não postar.
+
+O link dentro da mensagem de ressurgimento **não** volta para a captura: mensagem de
+bot é descartada por padrão, e mesmo com `--include-bots` a URL já está em
+`10_FONTES` e o dedup a barra. Há teste para as duas barreiras.
 
 ### Marcação no Discord
 

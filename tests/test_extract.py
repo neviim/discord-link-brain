@@ -165,3 +165,33 @@ class TestJumpUrlDoServidor(unittest.TestCase):
         """DM não tem servidor, e aí `@me` é o endereço certo."""
         hit = extract_links(self.mensagens(), "42")[0]
         self.assertEqual(hit.jump_url, "https://discord.com/channels/@me/42/999")
+
+
+class TestMensagemDoProprioBot(unittest.TestCase):
+    """O ressurgimento posta URLs no canal todo dia. Elas não podem voltar
+    para a captura — seria um laço: arquiva, ressurge, rearquiva.
+
+    Duas barreiras, e a segunda importa porque a primeira tem uma flag que a
+    desliga: (1) mensagem de bot é descartada por padrão; (2) mesmo com
+    `--include-bots`, a URL já está em `10_FONTES` e o dedup por URL a barra.
+    """
+
+    def ressurgimento(self):
+        # A forma exata que `ressurgir.formatar` produz, com <url> entre ângulos.
+        return [msg("1",
+                    "🕰️ **Ressurgimento** — 3 coisas que você salvou\n\n"
+                    "**1. Um vídeo antigo**\n"
+                    "<sub>2025-09-07 · há 300 dias · video</sub>\n"
+                    "<https://www.youtube.com/watch?v=abc>\n",
+                    bot=True)]
+
+    def test_link_da_propria_mensagem_nao_e_recapturado(self):
+        self.assertEqual(extract_links(self.ressurgimento(), "42"), [])
+
+    def test_com_include_bots_ele_apareceria(self):
+        """Documenta a pegadinha: a flag existe para casos legítimos (um bot que
+        publica links no canal), e com ela o ressurgimento entra na fila. O que
+        segura nesse caso é o dedup por URL contra `10_FONTES`."""
+        achados = extract_links(self.ressurgimento(), "42", include_bots=True)
+        self.assertEqual([h.url for h in achados],
+                         ["https://www.youtube.com/watch?v=abc"])
