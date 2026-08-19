@@ -1,0 +1,9 @@
+#!/bin/sh
+# Placeholder montado em /usr/local/bin/claude quando o binário do host não foi
+# passado para o container. Existe para o erro ser legível em vez de um
+# "arquivo não encontrado" genérico vindo do subprocess.
+echo "claude: binário do host não montado neste container." >&2
+echo "  Rode pelo wrapper ./dlb (ele acha o claude sozinho)," >&2
+echo "  ou exporte DLB_CLAUDE_BIN=/caminho/para/claude," >&2
+echo "  ou use LLM_BACKEND=anthropic / LLM_BACKEND=none no .env." >&2
+exit 127

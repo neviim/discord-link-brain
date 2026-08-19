@@ -1,0 +1,76 @@
+Seu pipeline hoje resolve a **captura**, que é a parte fácil. O problema é o clássico "memória write-only": o link entra, nunca sai. Uma nota diária com 8 URLs cruas é praticamente invisível para busca — daqui a seis meses você não vai lembrar que salvou aquilo, e mesmo que lembre, não vai achar.
+
+O que falta são as camadas entre capturar e usar:## 1. Enriquecer no momento da captura
+
+Essa é de longe a mudança de maior impacto. Sua automação já roda — faça ela fazer mais três coisas antes de escrever no Obsidian: buscar o `<title>` e a meta description da página, extrair o texto principal, e mandar para um LLM gerar um resumo de 2-3 linhas + 3 a 5 tags.
+
+Além disso, **pare de jogar tudo na nota diária**. Crie uma nota atômica por link em `50_LINKS/`, e deixe o diário apenas com os wikilinks do dia. Assim cada link vira um nó de primeira classe: aparece no grafo, tem backlinks, é filtrável.
+
+Estrutura sugerida do frontmatter:
+
+```yaml
+---
+url: https://exemplo.com/artigo
+titulo: "Título real da página"
+dominio: exemplo.com
+capturado: 2026-08-18
+origem: discord
+tags: [rust, async, performance]
+status: inbox
+nota: 3           # sua avaliação depois de ler
+resumo: "Explica como o runtime do Tokio faz work-stealing..."
+---
+```
+
+O campo `dominio` parece bobo mas é ouro depois — você descobre em 3 meses que 40% do que salva vem de duas fontes, e pode simplesmente assinar o RSS delas.
+
+## 2. Triagem: sem isso vira cemitério
+
+O campo `status` é o que separa um sistema vivo de um depósito. Ciclo mínimo: `inbox` → `lido` → `aplicado` ou `descartado`. Descartar é uma ação legítima e importante — reconhecer que algo não serviu limpa o ruído.
+
+Reserve 20 minutos numa sexta. Não para ler tudo, só para classificar. A maioria dos links vai virar `descartado` e tudo bem.
+
+## 3. Bases e dashboards
+
+O Bases virou plugin nativo do Obsidian no início de 2026, com views de lista, tabela e cards construídas em cima das propriedades das notas. Não precisa mais instalar Dataview para o básico. Crie umas 4 views:
+
+- **Inbox** — `status = inbox`, ordenado por data. Sua fila de trabalho.
+- **Por tema** — agrupado por tag, mostrando contagem.
+- **Aplicados** — o que virou uso real. É o seu "acervo de valor comprovado".
+- **Fontes** — agrupado por domínio.
+
+## 4. Síntese periódica automatizada
+
+Estenda a automação: toda sexta, ela pega os resumos dos links da semana e gera uma nota `Semanal 2026-W33` com os temas recorrentes, o que se conecta com o que, e 2-3 perguntas em aberto. Mensal, faz o rollup dos semanais.
+
+Isso é o que converte fluxo em conhecimento. Ler 7 resumos semanais no fim do mês te dá uma leitura do seu próprio interesse que nenhuma nota diária dá.
+
+## 5. Acesso rápido — a parte que você mais pediu
+
+Três níveis, do mais barato ao mais poderoso:
+
+**Busca semântica dentro do Obsidian.** O Smart Connections roda um modelo de embedding local, sem API key, e mostra notas relacionadas enquanto você escreve. Combinado com o Copilot for Obsidian apontando para um Ollama local, você pergunta "o que eu já salvei sobre observabilidade?" e recebe uma resposta sintetizada. A dupla Smart Connections + Copilot cobre a maior parte dos casos de "segundo cérebro" sem mandar nada para a nuvem — os embeddings ficam em `.smart-env/` dentro do vault.
+
+**Um `/buscar` no próprio Discord.** Esse é o encaixe mais natural pro seu caso. Você já vive no Discord, é onde você joga os links. Faça o bot também *responder*: indexe as notas com embeddings (Ollama + `nomic-embed-text`, guardando em SQLite ou LanceDB) e adicione um slash command que busca no vault e responde no canal. Captura e recuperação no mesmo lugar, e funciona do celular sem abrir o Obsidian.
+
+**Ressurgimento programado.** Todo dia de manhã o bot posta 3 links aleatórios de mais de 30 dias atrás, com o resumo. Combate direto ao esquecimento e custa 15 linhas de código. Na minha experiência esse é o recurso que mais surpreende as pessoas — você redescobre coisas que salvou e esqueceu completamente.
+
+## 6. Fechar o ciclo: produzir
+
+Quando uma tag passar de ~15 links, isso é sinal de que virou um tema seu de verdade. Crie um MOC (`MOC - Rust Async`) reunindo os melhores, escrevendo *com suas palavras* o que você entendeu. Os MOCs viram sua porta de entrada, não o diário.
+
+E de vez em quando transforme um MOC num post, num snippet, num projeto. Conhecimento que nunca sai não é conhecimento, é acúmulo.
+
+---
+
+## Ordem que eu sugeriria
+
+1. Enriquecimento na captura + nota atômica por link *(maior ganho, e retroativamente aplicável nos arquivos antigos)*
+2. Script de migração para reprocessar o que já está em `40_DIARIO`
+3. Bases com a view de inbox
+4. Smart Connections
+5. Síntese semanal automatizada
+6. `/buscar` no Discord
+
+---
+

@@ -1,0 +1,89 @@
+# Dois serviços, dois perfis. Use o wrapper `./dlb.sh` — ele resolve os caminhos do
+# host (o `~` do .env, o binário do claude, seu UID) e exporta para cá.
+#
+#   ./dlb.sh dev doctor          serviço dev, container efêmero
+#   ./dlb.sh prod up             serviço prod, agendador em background
+#
+# Chamar `docker compose` na mão funciona, mas exige exportar DLB_HOST_VAULT
+# e amigos antes — por isso os `:?` abaixo, que falham alto em vez de montar
+# a pasta errada em cima do seu vault.
+
+name: discord-link-brain
+
+services:
+  # ------------------------------------------------------------------ prod --
+  # Sobe uma vez e fica. O agendador dentro do container chama `dlb sync` na
+  # hora marcada; o container reinicia sozinho se a máquina reiniciar.
+  prod:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: prod
+      args:
+        UID: ${DLB_UID:-1000}
+        GID: ${DLB_GID:-1000}
+    image: discord-link-brain:prod
+    container_name: dlb-prod
+    user: "${DLB_UID:-1000}:${DLB_GID:-1000}"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Vencem o que veio do .env — dentro do container o vault é /vault.
+      OBSIDIAN_VAULT: /vault
+      TZ: ${TIMEZONE:-America/Sao_Paulo}
+      CLAUDE_CONFIG_DIR: /home/dlb/.claude
+      # Grade de 6 em 6 horas ancorada na meia-noite: 00:00, 06:00, 12:00, 18:00.
+      DLB_SYNC_EVERY_HOURS: ${DLB_SYNC_EVERY_HOURS:-6}
+      DLB_SYNC_AT: ${DLB_SYNC_AT:-}
+      DLB_SYNC_INTERVAL: ${DLB_SYNC_INTERVAL:-}
+      DLB_SYNC_ARGS: ${DLB_SYNC_ARGS:-}
+      DLB_RUN_ON_START: ${DLB_RUN_ON_START:-1}
+      DLB_HEALTH_TOLERANCE: ${DLB_HEALTH_TOLERANCE:-28800}
+      # Recuperação do histórico em fatias, uma por ciclo. Desligado por padrão:
+      # ligue quando quiser que o passado seja mastigado sozinho.
+      DLB_BACKFILL: ${DLB_BACKFILL:-0}
+      DLB_BACKFILL_DAYS: ${DLB_BACKFILL_DAYS:-2}
+    volumes:
+      - ${DLB_HOST_VAULT:?rode ./dlb.sh, ou exporte DLB_HOST_VAULT com o caminho absoluto do vault}:/vault
+      - ./.state:/app/.state
+      # Login do claude compartilhado com o host. Veja o README: se preferir
+      # não expor isso, use LLM_BACKEND=anthropic (ou none) e comente as duas.
+      - ${DLB_CLAUDE_BIN:-./docker/placeholder/claude}:/usr/local/bin/claude:ro
+      - ${DLB_CLAUDE_HOME:-./docker/placeholder/home}:/home/dlb/.claude
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ------------------------------------------------------------------- dev --
+  # Efêmero e falador. O código vem do host por bind mount: editou, rodou.
+  # O vault entra somente-leitura por padrão — `--dry-run` funciona, escrita
+  # acidental no seu segundo cérebro não.
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: dev
+      args:
+        UID: ${DLB_UID:-1000}
+        GID: ${DLB_GID:-1000}
+    image: discord-link-brain:dev
+    user: "${DLB_UID:-1000}:${DLB_GID:-1000}"
+    env_file:
+      - .env
+    environment:
+      OBSIDIAN_VAULT: /vault
+      TZ: ${TIMEZONE:-America/Sao_Paulo}
+      CLAUDE_CONFIG_DIR: /home/dlb/.claude
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - .:/app
+      - ${DLB_DEV_VAULT:?rode ./dlb.sh, ou exporte DLB_DEV_VAULT}:/vault:${DLB_DEV_VAULT_MODE:-ro}
+      - ${DLB_CLAUDE_BIN:-./docker/placeholder/claude}:/usr/local/bin/claude:ro
+      - ${DLB_CLAUDE_HOME:-./docker/placeholder/home}:/home/dlb/.claude
+    stdin_open: true
+    tty: true
