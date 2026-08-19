@@ -5,6 +5,7 @@ para rodar. Aqui está o resto, separado por **o que você está tentando fazer*
 
 | Quero… | Leia |
 |---|---|
+| **usar a nota atômica por link, triar, migrar o histórico** | **[LINKS.md](LINKS.md)** |
 | entender como funciona por dentro | [ARQUITETURA.md](ARQUITETURA.md) |
 | configurar o Discord, o vault, o LLM | [CONFIGURACAO.md](CONFIGURACAO.md) |
 | rodar, agendar, recuperar histórico, resolver problema | [OPERACAO.md](OPERACAO.md) |
@@ -19,8 +20,9 @@ dia, por categoria e por conceito.
 
 ```
 Discord  →  extrai links  →  lê a página   →  LLM classifica  →  vault Obsidian  →  marca no Discord
-            (dedup, limpa)   (oEmbed, og:,    (resumo, cat.)     (fonte + diário     (✅ ou 📚)
-                              texto central)                      + MOC)
+            (dedup, limpa)   (oEmbed, og:,    (resumo, cat.)     (fonte + nota       (✅ ou 📚)
+                              texto central)                      atômica + diário
+                                                                  + MOC)
 ```
 
 ## O problema que ele resolve
@@ -39,3 +41,7 @@ aquilo era e por que importava, no lugar onde você já procura as coisas.
 2. **Ele não cria página em `20_WIKI/`.** Compilar conceito é trabalho curado;
    o pipeline só aponta candidatos. Ver [DECISOES.md](DECISOES.md).
 3. **Ele nunca apaga nada** — nem no vault, nem no Discord. Marca com reação.
+
+E uma quarta, da camada mais nova: **a nota de link é sua.** O pipeline a cria e
+nunca a reescreve sem `--force`; `triagem`, `nota` e tudo abaixo de
+`## Minhas notas` sobrevivem até com `--force`. Ver [LINKS.md](LINKS.md).

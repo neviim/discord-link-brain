@@ -10,14 +10,16 @@ contexto). Este pipeline transforma a pilha em trilha.
 
 ```
 Discord  →  extrai links  →  lê a página   →  LLM classifica  →  vault Obsidian  →  marca ✅
-            (dedup, limpa)   (oEmbed, og:,    (resumo, cat.)     (fonte + diário     (no Discord)
-                              texto central)                      + MOC)
+            (dedup, limpa)   (oEmbed, og:,    (resumo, cat.)     (fonte + nota       (no Discord)
+                              texto central)                      atômica + diário
+                                                                  + MOC)
 ```
 
 ## Documentação
 
 | Quero… | Leia |
 |---|---|
+| usar a nota atômica por link, triar, migrar o histórico | [docs/LINKS.md](docs/LINKS.md) |
 | entender como funciona por dentro | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) |
 | configurar Discord, vault e LLM | [docs/CONFIGURACAO.md](docs/CONFIGURACAO.md) |
 | rodar, agendar, resolver problema | [docs/OPERACAO.md](docs/OPERACAO.md) |
