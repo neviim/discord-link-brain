@@ -424,6 +424,11 @@ O custo é honesto e pequeno: latência de um ciclo, e não é slash command na 
 60s, e com a chamada de modelo levando 30-60s, **o polling não é o gargalo** — o que
 elimina a principal vantagem das outras duas.
 
+**Consequência aceita, e a que mais confunde na prática:** sem gateway, o Discord
+marca o bot como **Offline** na lista de membros — para sempre, mesmo com o
+responder rodando e respondendo. "Online" ali significa "tem websocket aberto", e
+não "está funcionando". O sinal de vida é a reação ⏳ aparecendo na pergunta.
+
 **Desfazer custa:** uma dependência de websocket e um segundo processo sempre de
 pé; para Interactions, também uma entrada pública que hoje não existe.
 

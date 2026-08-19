@@ -312,6 +312,15 @@ python3 -m dlb buscar "o que eu salvei sobre agentes de IA?"
 
 ### Três coisas que valem saber
 
+**O bot aparece Offline, e isso é normal.** O Discord só marca "online" quem mantém
+conexão de gateway, e nós não mantemos de propósito. `Notasdiarias` vai ficar
+sempre em Offline na lista de membros, respondendo normalmente. O sinal de vida é o
+⏳ aparecendo na sua pergunta — não a bolinha verde.
+
+**O responder precisa estar rodando.** Não há nada automático até você subir o laço:
+`python3 -m dlb responder` no host, ou `./dlb.sh prod up`, que sobe o serviço
+`responder` junto do agendador. Sem isso o `?buscar` fica parado no canal.
+
 **Não é slash command nativo.** É polling do que já lemos. Gateway exigiria uma
 dependência de websocket e um processo com conexão de estado; Interactions exigiria
 uma **porta de entrada** na máquina que guarda o seu `~/.claude`. A 60s de ciclo, e
@@ -495,6 +504,11 @@ o histórico da sua decisão.
 acervo de centenas de links a tag de assunto produziria trezentas tags de um uso
 cada. Conceito que ainda não tem página aparece como texto em `## Conceitos sem
 página`, com `#acao/expandir` — nunca como wikilink pendurado.
+
+**Não confunda o bot Offline com bot quebrado.** Ele fica permanentemente Offline
+na lista de membros do Discord porque não usa gateway. Para saber se está vivo:
+`./dlb.sh prod status` mostra a saúde do container `dlb-responder`, e
+`./dlb.sh prod logs responder` mostra cada volta.
 
 **Não acrescente propriedade sem emendar o ESQUEMA.** O passo a passo está em
 [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md#acrescentar-uma-propriedade-à-nota-de-link).
