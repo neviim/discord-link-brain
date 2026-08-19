@@ -127,7 +127,11 @@ def _fallback(url: str, erro: str = "") -> PageMeta:
 
 
 def _fetch_youtube(url: str, video_id: str, timeout: float) -> PageMeta:
-    meta = PageMeta(site="YouTube", kind="youtube")
+    # `legivel=False` explícito: o default de PageMeta é True, e as duas
+    # atribuições abaixo estão dentro de `try`. Se as duas buscas falharem, um
+    # vídeo que ninguém conseguiu ler sairia marcado como lido, com título vazio
+    # — e o prompt do classify deixaria de instruir o modelo a dizer que não leu.
+    meta = PageMeta(site="YouTube", kind="youtube", legivel=False)
 
     # 1) oEmbed: sem chave, sem bloqueio, devolve título e canal.
     try:

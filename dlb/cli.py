@@ -66,7 +66,15 @@ def _enrich_all(cfg: Config, hits: list[LinkHit], enabled: bool) -> dict[str, Pa
     if not enabled:
         return metas
     for index, hit in enumerate(hits, 1):
-        meta = fetch_meta(hit.url, timeout=cfg.enrich_timeout)
+        try:
+            meta = fetch_meta(hit.url, timeout=cfg.enrich_timeout)
+        except Exception as exc:                                   # noqa: BLE001
+            # A ARQUITETURA promete que enriquecer nunca interrompe, e o
+            # `fetch_meta` já trata o que ele espera. Esta rede é para o que ele
+            # NÃO espera: um bug no parser, um erro de memória, um tipo novo de
+            # exceção. Deixar subir mataria a execução inteira e o dia de links
+            # ficaria para a próxima — por causa de uma página que não abriu.
+            meta = PageMeta(error=str(exc)[:200], legivel=False)
         if meta.kind == "youtube":
             estado = f"vídeo: {meta.title[:60]}" if meta.legivel else "vídeo ilegível"
         elif not meta.legivel:

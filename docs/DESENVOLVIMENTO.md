@@ -36,10 +36,13 @@ arquivo, linha e o que era esperado.
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
 | `test_busca.py` | 21 | acento na pergunta, IDF, e **a URL vindo do acervo e não do modelo** |
+| `test_retry.py` | 21 | **a escada de 429/5xx**: esperar o certo, desistir na hora certa, e nunca mencionar ninguém |
 | `test_extract.py` | 18 | normalização de URL, canonização, fuso, `guild_id`, e o laço do ressurgimento |
+| `test_sync.py` | 18 | **o comando que roda sozinho**: a ordem escreve-depois-marca, e o que acontece quando algo explode |
+| `test_enrich_rede.py` | 17 | **a superfície hostil**: página que não abre, 50 MB de nada, encoding errado, teto de bytes |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
-| **total** | **404** | 74% das linhas de `dlb/` |
+| **total** | **460** | 84% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -59,21 +62,21 @@ Estado atual:
 dlb/config.py         100%
 dlb/ressurgir.py      100%
 dlb/state.py          100%
+dlb/extract.py         98%
 dlb/corpus.py          97%
-dlb/extract.py         97%
+dlb/enrich.py          96%
 dlb/migrar.py          96%
-dlb/vault.py           95%
+dlb/vault.py           96%
 dlb/busca.py           94%
 dlb/temas.py           93%
 dlb/models.py          93%
 dlb/frontmatter.py     91%
 dlb/responder.py       89%
+dlb/discord_client.py  88%
 dlb/classify.py        72%
 dlb/sintese.py         68%   ← o que falta é caminho de subprocess
-dlb/discord_client.py  50%   ← o que falta é caminho de rede
-dlb/cli.py             38%   ← falta sync/backfill/doctor; ver DECISOES.md
-dlb/enrich.py          35%   ← caminho de rede
-TOTAL                  74%
+dlb/cli.py             57%   ← falta backfill/doctor/laço; ver DECISOES.md
+TOTAL                  84%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que
