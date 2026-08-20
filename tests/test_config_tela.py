@@ -16,6 +16,7 @@ opostos) e que validação de tipo não pegaria: os dois valores eram válidos.
 
 import json
 import os
+import shutil
 import unittest
 import urllib.error
 import urllib.parse
@@ -97,12 +98,17 @@ class TestContratoDoSchema(unittest.TestCase):
                     self.assertEqual(valores.get(campo.chave, ""), "")
 
 
+@unittest.skipUnless(shutil.which("git"), "precisa do git: a autoridade sobre .gitignore é ele")
 class TestOsArquivosQueOPainelEscreveNaoVazam(unittest.TestCase):
     """O backup do `.env` tem o `DISCORD_TOKEN`. Ele não pode ser commitável.
 
     `.gitignore` tinha `.env` e só. `.env.bak` — que **este código** passou a criar
     — aparecia como arquivo novo no `git status`, esperando um `git add -A`
     distraído. O defeito nasceu com a feature, não estava no repo antes.
+
+    Pulado onde não há `git` — a imagem `dev` do container não o tem, e
+    `./dlb.sh dev test` é caminho documentado. Reimplementar a semântica do
+    `.gitignore` para não depender dele seria trocar a autoridade por um palpite.
     """
 
     def ignorado(self, nome: str) -> bool:

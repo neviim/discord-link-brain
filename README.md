@@ -186,13 +186,27 @@ Depois de um `sync`, o índice do Obsidian tem latência — rode
 ## Testes
 
 ```bash
-./dlb.sh dev test                            # dentro do container
-python3 -m unittest discover -s tests -t .   # no host, só precisa de PyYAML
+./testar.py                # a suíte inteira, com resumo legível
+./testar.py --help         # os sete modos: um módulo, repetir, cobertura, container…
 ```
 
-811 testes, 89% de cobertura das linhas de `dlb/`. Nenhum toca a rede, o Discord
-ou o vault real. O mapa de o-que-cobre-o-quê e como medir cobertura estão em
-[docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
+Termina com `✔ PASSOU` (código 0) ou `✘ FALHOU` (código 1) — e `⚠ NADA RODOU`
+(código 2) quando o comando não chegou a rodar a suíte, porque zero teste executado
+não é sucesso.
+
+**811 testes, 89% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
+ou o vault real. Os sete modos, o mapa de o-que-cobre-o-quê e como medir cobertura
+estão em [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
+
+Este número é travado por teste (`tests/test_documentacao.py`): se a suíte crescer e
+a linha acima ficar para trás, a suíte falha.
+
+Sem o script, as linhas cruas continuam valendo:
+
+```bash
+python3 -m unittest discover -s tests -t .   # no host, só precisa de PyYAML
+./dlb.sh dev test                            # dentro do container
+```
 
 ## Limitações conhecidas
 
