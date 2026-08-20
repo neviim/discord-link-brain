@@ -250,6 +250,11 @@ Docker.
 
 Precedência: `INTERVAL` > `EVERY_HOURS` > `AT`.
 
+Para usar `DLB_SYNC_AT`, `DLB_SYNC_EVERY_HOURS` precisa ficar **vazio** no `.env`
+(`DLB_SYNC_EVERY_HOURS=`), e não apenas ausente — ausente faz o compose aplicar o
+padrão `6`, que vence o `AT` pela precedência acima. `python3 -m dlb painel` avisa
+na tela de agenda quando o `AT` está definido e sendo ignorado.
+
 ### Histórico
 
 | Variável | Padrão | O quê |

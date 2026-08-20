@@ -27,7 +27,7 @@ from pathlib import Path
 
 from dlb.config import Config
 from dlb.painel import Erro, construir
-from dlb import journal
+from dlb import compose, journal
 
 from tests.test_vault import VaultCase, note
 
@@ -44,7 +44,12 @@ class PainelCase(VaultCase):
             channel_names={"42": "estudos"},
             vault_path=self.root,
             state_dir=self.state,
+            env_path=self.root / ".env",
         )
+        # Nenhum teste fala com o docker de verdade: seria lento, dependeria da
+        # máquina, e o que se quer travar é a degradação, não o `docker inspect`.
+        self._inspecionar = compose.inspecionar
+        compose.inspecionar = lambda *a, **k: None
         self.servidor = construir(self.cfg, porta=0, silencioso=True)
         self.base = f"http://127.0.0.1:{self.servidor.server_port}"
         # `poll_interval` padrão é 0,5 s, e cada `shutdown()` espera um ciclo
@@ -55,6 +60,7 @@ class PainelCase(VaultCase):
         self.thread.start()
 
     def tearDown(self):
+        compose.inspecionar = self._inspecionar
         self.servidor.shutdown()
         self.servidor.server_close()
         self.thread.join(timeout=5)
@@ -229,6 +235,74 @@ class TestGestorNaTela(PainelCase):
         _, _, html = self.pegar("/")
         for comando in ("sync", "backfill", "sintese", "ressurgir"):
             self.assertIn(comando, html)
+
+
+class TestAgendaNaTela(PainelCase):
+    def env(self, texto):
+        (self.root / ".env").write_text(texto, encoding="utf-8")
+
+    def test_sem_container_a_tela_diz_que_esta_lendo_o_arquivo(self):
+        """Metade certo é pior que honesto: a tela nomeia a fonte do número."""
+        self.env("DLB_SYNC_EVERY_HOURS=6\n")
+        codigo, _, html = self.pegar("/agenda")
+        self.assertEqual(codigo, 200)
+        self.assertIn("Mostrando o que", html)
+        self.assertIn("restart` não relê", html)
+
+    def test_mostra_os_quatro_comandos_com_o_motivo(self):
+        self.env("DLB_SYNC_EVERY_HOURS=6\nDLB_BACKFILL=1\nDLB_BACKFILL_DAYS=3\n")
+        _, _, html = self.pegar("/agenda")
+        for comando in ("sync", "backfill", "sintese", "ressurgir"):
+            self.assertIn(comando, html)
+        self.assertIn("--days 3", html)
+        self.assertIn("DLB_SINTESE=0", html)
+
+    def test_avisa_que_o_sync_at_esta_sendo_ignorado(self):
+        """A armadilha que o compose criava: `DLB_SYNC_AT` junto de `EVERY_HOURS`
+        não roda, e nada avisava."""
+        self.env("DLB_SYNC_EVERY_HOURS=6\nDLB_SYNC_AT=03:30\n")
+        _, _, html = self.pegar("/agenda")
+        self.assertIn("faixa-atencao", html)
+        self.assertIn("DLB_SYNC_AT=03:30", html)
+
+    def test_avisa_chave_duplicada_no_env(self):
+        self.env("DLB_BACKFILL=1\nDLB_BACKFILL=0\n")
+        _, _, html = self.pegar("/agenda")
+        self.assertIn("faixa-alerta", html)
+        self.assertIn("Chave repetida", html)
+
+    def test_divergencia_entre_arquivo_e_container_aparece(self):
+        self.env("DLB_SYNC_EVERY_HOURS=3\n")
+        compose.inspecionar = lambda *a, **k: {
+            "container": "dlb-prod", "rodando": True, "status": "running",
+            "saude": "healthy", "desde": None, "criado": None, "imagem": "x",
+            "env": {"DLB_SYNC_EVERY_HOURS": "6", "TZ": "America/Sao_Paulo"},
+        }
+        _, _, html = self.pegar("/agenda")
+        self.assertIn("é ele que manda", html)
+        self.assertIn("DLB_SYNC_EVERY_HOURS", html)
+        dados = self.json_de("/api/agenda")
+        self.assertEqual(dados["fonte"], "container")
+        self.assertEqual(
+            [d["chave"] for d in dados["divergencias"] if d["chave"] == "DLB_SYNC_EVERY_HOURS"],
+            ["DLB_SYNC_EVERY_HOURS"],
+        )
+        self.assertEqual(dados["modo"], "grade")
+
+    def test_api_agenda_traz_slots_e_fonte(self):
+        self.env("DLB_SYNC_EVERY_HOURS=6\n")
+        dados = self.json_de("/api/agenda")
+        self.assertEqual(dados["fonte"], "arquivo")
+        self.assertEqual([s["comando"] for s in dados["slots"]],
+                         ["sync", "backfill", "sintese", "ressurgir"])
+        self.assertTrue(dados["slots"][0]["proximo"])
+
+    def test_sem_env_nenhum_a_tela_abre_com_o_padrao(self):
+        """Clone novo, sem `.env`: a agenda mostra o padrão do scheduler em vez de
+        estourar — é assim que se descobre que falta configurar."""
+        codigo, _, html = self.pegar("/agenda")
+        self.assertEqual(codigo, 200)
+        self.assertIn("padrão", html)
 
 
 class TestFronteira(PainelCase):

@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import gestor, journal
+from . import agenda, compose, env_io, gestor, journal
 from .acervo import Acervo, filtrar, resumo
 from .config import Config
 from .render import Raw, juntar, pagina, substituir, tabela
@@ -146,6 +146,30 @@ class Estado:
 
     def lock(self) -> dict | None:
         return journal.dono(self.cfg.state_dir, "canais")
+
+    def agenda(self) -> dict:
+        """A grade, com as duas colunas: o que o `.env` diz e o que o container tem.
+
+        `restart` não relê o `.env` (commit `4ee85aa`), então as duas podem
+        discordar — e quem manda é o container. Mostrar só o arquivo seria o
+        painel mentir sobre a grade, que é o risco número 1 desta tela.
+        """
+        do_arquivo = env_io.ler(self.cfg.env_path)
+        inspecao = compose.inspecionar()
+        ativo, fonte = compose.ambiente_ativo(do_arquivo, inspecao)
+        dados = agenda.visao(ativo)
+        dados.update(
+            {
+                "fonte": fonte,
+                "container": inspecao,
+                "divergencias": compose.divergencias(do_arquivo, (inspecao or {}).get("env"), agenda.CHAVES),
+                "arquivo": {k: do_arquivo.get(k, "") for k in agenda.CHAVES},
+                "env_path": str(self.cfg.env_path),
+                "duplicadas": env_io.duplicadas(self.cfg.env_path),
+                "ultimos": self.ultimos(),
+            }
+        )
+        return dados
 
     def visao_geral(self) -> dict:
         entradas = self.links()
@@ -406,6 +430,127 @@ $tabela""",
     return pagina("Execuções", corpo, ativo="/execucoes", vault=str(estado.cfg.vault_path))
 
 
+def _view_agenda(estado: Estado) -> str:
+    dados = estado.agenda()
+    inspecao = dados["container"]
+
+    if dados["fonte"] == "container":
+        origem = substituir(
+            "<p class=detalhe>Os números abaixo vêm do <strong>container</strong> "
+            "($container, $status$saude) — é ele que manda. O que o arquivo diz está "
+            "na tabela de divergências.</p>",
+            container=inspecao["container"],
+            status=inspecao["status"],
+            saude=f", saúde {inspecao['saude']}" if inspecao.get("saude") else "",
+        )
+    else:
+        motivo = (
+            "o container não está no ar"
+            if inspecao
+            else "não consegui falar com o docker (ou o container nunca foi criado)"
+        )
+        origem = substituir(
+            "<p class=aviso>Mostrando o que <strong>$arquivo</strong> diz, porque $motivo. "
+            "Se o container subir com outro valor, é o dele que vale — `restart` não relê o "
+            "`.env`, só `up`.</p>",
+            arquivo=dados["env_path"],
+            motivo=motivo,
+        )
+
+    avisos = juntar(
+        [substituir("<article class='faixa faixa-atencao'><p>$texto</p></article>", texto=a)
+         for a in dados["avisos"]],
+        "",
+    ) or Raw("")
+
+    duplicadas = dados["duplicadas"]
+    aviso_dup = (
+        substituir(
+            "<article class='faixa faixa-alerta'><p>Chave repetida no `.env`: $quais. "
+            "A <strong>primeira</strong> ocorrência é a que vale — `load_dotenv` usa "
+            "`setdefault`.</p></article>",
+            quais=", ".join(f"{k} (linhas {', '.join(map(str, v))})" for k, v in duplicadas.items()),
+        )
+        if duplicadas
+        else Raw("")
+    )
+
+    ultimos = dados["ultimos"]
+    linhas_slots = []
+    for slot in dados["slots"]:
+        run = ultimos.get(slot["comando"])
+        linhas_slots.append(
+            [
+                slot["comando"],
+                Raw("<span class='selo selo-ok'>ativo</span>")
+                if slot["ativo"]
+                else Raw("<span class=selo>desligado</span>"),
+                slot["porque"],
+                (slot["proximo"] or "—").replace("T", " ")[:16],
+                "nunca" if not run else (run.get("inicio") or "")[:16].replace("T", " "),
+                slot["observacao"] or "—",
+            ]
+        )
+
+    divergencias = tabela(
+        ["chave", "no .env", "no container"],
+        [[d["chave"], d["arquivo"] or "(vazio)", d["container"] or "(vazio)"] for d in dados["divergencias"]],
+        vazio="Nenhuma: o arquivo e o container dizem a mesma coisa.",
+    )
+
+    corpo = substituir(
+        """<h1>Agenda</h1>
+$origem
+$aviso_dup
+$avisos
+
+<section class=cartoes>
+$cartoes
+</section>
+
+<h2>Os quatro comandos do ciclo</h2>
+<p class=detalhe>O laço roda os quatro em sequência a cada disparo, nesta ordem.
+Cada um decide sozinho se tem trabalho — daí "ativo" não significar "vai fazer algo".</p>
+$slots
+
+<h2>.env contra container</h2>
+<p class=detalhe>Aplicar mudança de agenda é <code>./dlb.sh prod up</code>, que
+recria o container. <code>restart</code> reaproveita o antigo e o `.env` novo não
+entra — sem erro nenhum.</p>
+$divergencias""",
+        origem=origem,
+        aviso_dup=aviso_dup,
+        avisos=avisos,
+        cartoes=juntar(
+            [
+                _cartao("Modo", dados["modo"], dados["detalhe"]),
+                _cartao(
+                    "Próximo disparo",
+                    (dados["slots"][0]["proximo"] or "não ancorado")[11:16]
+                    if dados["slots"][0]["proximo"]
+                    else "depende",
+                    (dados["slots"][0]["proximo"] or "")[:10]
+                    or "modo intervalo conta do fim do último ciclo",
+                ),
+                _cartao("Fuso do agendador", dados["fuso"], f"agora {dados['agora'][11:19]}"),
+                _cartao(
+                    "Ao subir",
+                    "roda na hora" if dados["roda_ao_subir"] else "espera o slot",
+                    "DLB_RUN_ON_START",
+                ),
+            ],
+            "",
+        ),
+        slots=tabela(
+            ["comando", "estado", "por quê", "próximo", "última vez", "observação"],
+            linhas_slots,
+            vazio="—",
+        ),
+        divergencias=divergencias,
+    )
+    return pagina("Agenda", corpo, ativo="/agenda", vault=str(estado.cfg.vault_path))
+
+
 def _view_acervo(estado: Estado, consulta: dict) -> str:
     def um(nome: str) -> str:
         return (consulta.get(nome) or [""])[0].strip()
@@ -516,6 +661,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._html(_view_painel(self.estado), corpo)
             elif rota == "/execucoes":
                 self._html(_view_execucoes(self.estado, consulta), corpo)
+            elif rota == "/agenda":
+                self._html(_view_agenda(self.estado), corpo)
             elif rota == "/acervo":
                 self._html(_view_acervo(self.estado, consulta), corpo)
             elif rota == "/api/estado":
@@ -525,6 +672,8 @@ class Handler(BaseHTTPRequestHandler):
                     {"execucoes": self.estado.execucoes(limite=_inteiro(consulta, "limite", 100))},
                     corpo,
                 )
+            elif rota == "/api/agenda":
+                self._json(self.estado.agenda(), corpo)
             elif rota == "/api/acervo":
                 self._api_acervo(consulta, corpo)
             elif rota.startswith("/static/"):

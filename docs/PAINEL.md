@@ -11,12 +11,13 @@ python3 -m dlb painel --porta 9000
 Roda **no host**, não dentro do container. Precisa do `.env` do projeto (o mesmo
 que a CLI usa) e de acesso de leitura ao vault.
 
-## As três telas
+## As quatro telas
 
 | Tela | Responde |
 |---|---|
 | **Painel** (`/`) | O agendador está vivo? O responder está vivo? Quanto tem no acervo, quanto está na fila de triagem, o que rodou por último, onde está o cursor de cada canal. |
 | **Execuções** (`/execucoes`) | Uma linha por run, do mais recente para o mais antigo, com status, duração, contadores e erro. Filtra por comando. |
+| **Agenda** (`/agenda`) | Qual dos três modos está valendo, quando é o próximo disparo, e o que cada um dos quatro comandos do ciclo vai fazer. |
 | **Acervo** (`/acervo`) | As notas de `50_LINKS/`, com busca literal por título, resumo, domínio e conceito, e faceta por triagem. |
 
 Cada tela tem um JSON equivalente, para `curl` e para script:
@@ -24,6 +25,7 @@ Cada tela tem um JSON equivalente, para `curl` e para script:
 ```bash
 curl -s localhost:8765/api/estado     | jq .heartbeats
 curl -s localhost:8765/api/execucoes  | jq '.execucoes[0]'
+curl -s localhost:8765/api/agenda     | jq '.modo, .slots[].proximo'
 curl -s localhost:8765/api/acervo     | jq '.total, .resumo.por_triagem'
 curl -s 'localhost:8765/api/acervo?q=nostr&triagem=inbox&limite=20' | jq '.no_filtro'
 ```
@@ -75,6 +77,42 @@ hábito, não sobre pipeline: se só cresce, a triagem não está acontecendo.
 Se algum comando estiver rodando com o lock de canais tomado, aparece um aviso no
 topo com o pid e desde quando — é o mesmo lock que faz um segundo `sync`
 simultâneo ser recusado.
+
+## A agenda mostra duas colunas, e diz qual manda
+
+Esta é a tela que tem mais chance de mentir, porque a grade de verdade é
+`docker/scheduler.sh` — shell, dentro do container — e `dlb/agenda.py` é uma
+segunda implementação da mesma regra.
+
+Três defesas:
+
+1. **A fonte do número é nomeada.** Container no ar: os valores vêm dele, via
+   `docker inspect` (leitura, no host, sem socket montado). Container parado ou
+   docker indisponível: vêm do `.env`, e a tela diz que vieram do `.env`. Nunca os
+   dois ao mesmo tempo.
+2. **Divergência aparece em tabela.** `restart` não relê o `.env`; só `up` relê.
+   Então arquivo e processo podem discordar por semanas sem erro nenhum, e a tela
+   lista chave por chave onde discordam.
+3. **A aritmética é conferida contra o script.** `tests/test_agenda.py` extrai o
+   Python embutido no `scheduler.sh`, fixa o relógio e compara com a nossa função.
+   Editar a grade no shell quebra o teste no dia da edição.
+
+**Os quatro comandos aparecem sempre**, ativos ou não, com a variável que decide.
+Uma tela que mostrasse só o `sync` esconderia três quartos do ciclo.
+
+### Para usar `DLB_SYNC_AT` (horário fixo)
+
+A precedência do scheduler é `DLB_SYNC_INTERVAL` > `DLB_SYNC_EVERY_HOURS` >
+`DLB_SYNC_AT`. Então o horário fixo só vale se `DLB_SYNC_EVERY_HOURS` chegar
+**vazio** ao container:
+
+```bash
+DLB_SYNC_EVERY_HOURS=       # vazio, e não ausente
+DLB_SYNC_AT=03:30
+```
+
+Depois, `./dlb.sh prod up` — não `restart`. A tela de agenda avisa quando o `AT`
+está definido e sendo ignorado.
 
 ## Somente leitura
 

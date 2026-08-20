@@ -106,6 +106,12 @@ class Config:
     link_notes: bool = True
     state_dir: Path = PROJECT_ROOT / ".state"
 
+    # O painel precisa ler o **arquivo**, não o ambiente do processo:
+    # `from_env` usa `setdefault`, então `os.environ` é uma mistura de `.env` com
+    # o que já estava exportado no shell. Para a tela dizer "o arquivo diz X",
+    # ela tem de abrir X.
+    env_path: Path = PROJECT_ROOT / ".env"
+
     # Marca no Discord o que já virou nota. Ver README: marcar, nunca apagar.
     # Dois emojis porque são dois estados diferentes para quem olha o canal:
     # "esta captura entrou agora" e "isto você já tinha".

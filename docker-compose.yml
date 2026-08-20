@@ -36,7 +36,14 @@ services:
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
       # Grade de 6 em 6 horas ancorada na meia-noite: 00:00, 06:00, 12:00, 18:00.
-      DLB_SYNC_EVERY_HOURS: ${DLB_SYNC_EVERY_HOURS:-6}
+      #
+      # `${VAR-6}` e não `${VAR:-6}`, e a diferença de um caractere é o que faz
+      # DLB_SYNC_AT existir: com `:-`, um `DLB_SYNC_EVERY_HOURS=` vazio no .env
+      # ainda chega aqui como 6, e a precedência do scheduler
+      # (INTERVAL > EVERY_HOURS > AT) descarta o AT em silêncio — não havia como
+      # usar horário fixo pelo perfil prod. Sem os dois-pontos, o padrão vale só
+      # quando a chave está **ausente**, e esvaziá-la libera o AT.
+      DLB_SYNC_EVERY_HOURS: ${DLB_SYNC_EVERY_HOURS-6}
       DLB_SYNC_AT: ${DLB_SYNC_AT:-}
       DLB_SYNC_INTERVAL: ${DLB_SYNC_INTERVAL:-}
       DLB_SYNC_ARGS: ${DLB_SYNC_ARGS:-}
