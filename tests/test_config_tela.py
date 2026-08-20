@@ -375,6 +375,29 @@ class TestTelaDeConfig(PainelCase):
         self.assertIn("Salvo em", html)
         self.assertNotIn("Salvo em", self.pegar("/config")[2])
 
+    def test_avisa_que_aplicar_dispara_um_ciclo_na_hora(self):
+        """Descoberto aplicando de verdade: com `DLB_RUN_ON_START=1` o container
+        recém-criado roda o ciclo imediatamente. Três aplicares seguidos mastigaram
+        nove dias de histórico e gastaram modelo que ninguém agendou."""
+        compose.inspecionar = lambda *a, **k: {
+            "container": "dlb-prod", "rodando": True, "status": "running", "saude": "healthy",
+            "desde": None, "criado": None, "imagem": "x",
+            "env": {"DLB_RUN_ON_START": "1", "DLB_BACKFILL": "1", "DLB_RESSURGIR": "1"},
+        }
+        _, _, html = self.pegar("/config")
+        self.assertIn("dispara um sync na hora", html)
+        self.assertIn("backfill", html)
+        self.assertIn("ressurgir", html)
+
+    def test_sem_run_on_start_nao_avisa_nada(self):
+        compose.inspecionar = lambda *a, **k: {
+            "container": "dlb-prod", "rodando": True, "status": "running", "saude": None,
+            "desde": None, "criado": None, "imagem": "x",
+            "env": {"DLB_RUN_ON_START": "0"},
+        }
+        _, _, html = self.pegar("/config")
+        self.assertNotIn("dispara um sync na hora", html)
+
     def test_valor_invalido_recusa_com_a_mensagem_e_nao_escreve_nada(self):
         """Critério de pronto. Meia validação escreveria metade do formulário."""
         antes = self.env.read_bytes()

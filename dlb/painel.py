@@ -845,6 +845,36 @@ def _campo_html(campo, valor: str, pendente: bool, guardado: bool = False) -> Ra
     )
 
 
+def _efeito_do_aplicar(dados: dict) -> str:
+    """Avisa que recriar o container **dispara um ciclo na hora**.
+
+    Descoberto aplicando de verdade: com `DLB_RUN_ON_START=1` — que é o padrão — o
+    container recém-criado roda sync, backfill, síntese e ressurgir imediatamente.
+    Num teste de três aplicares seguidos isso mastigou nove dias de histórico e
+    gastou chamadas de modelo que ninguém agendou.
+
+    O aviso lê o ambiente do container, não o arquivo: o que decide é o que está
+    valendo agora.
+    """
+    ambiente = ((dados.get("container") or {}).get("env")) or {}
+    if (ambiente.get("DLB_RUN_ON_START") or "1").strip() != "1":
+        return ""
+    liga = [
+        nome
+        for chave, nome in (
+            ("DLB_BACKFILL", "backfill"),
+            ("DLB_SINTESE", "síntese"),
+            ("DLB_RESSURGIR", "ressurgir"),
+        )
+        if (ambiente.get(chave) or "0").strip() == "1"
+    ]
+    extra = f" — e {', '.join(liga)} junto" if liga else ""
+    return (
+        f" · atenção: DLB_RUN_ON_START=1, então recriar dispara um sync na hora{extra}, "
+        "gastando chamada de modelo"
+    )
+
+
 def _view_config(estado: Estado, aviso: Raw = Raw(""), erros: tuple = ()) -> str:
     dados = estado.config()
     valores = dados["valores"]
@@ -942,7 +972,7 @@ $faixa_pendente
 <form method=post action="/config/aplicar" class=acoes>
   <input type=hidden name=csrf value="$csrf">
   <button type=submit $desabilitado>aplicar (recria o container)</button>
-  <span class=ajuda>$quantas</span>
+  <span class=ajuda>$quantas$efeito</span>
 </form>
 $desfazer""",
         env_path=dados["env_path"],
@@ -958,6 +988,7 @@ $desfazer""",
             if dados["pendentes"]
             else "nada pendente"
         ),
+        efeito=_efeito_do_aplicar(dados),
         desfazer=desfazer,
     )
     return pagina("Configuração", corpo, ativo="/config", vault=str(estado.cfg.vault_path))
