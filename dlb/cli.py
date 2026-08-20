@@ -1025,6 +1025,13 @@ def build_parser() -> argparse.ArgumentParser:
     tem.add_argument("--out", help="arquivo de saída (padrão: stdout)")
     tem.set_defaults(func=cmd_temas)
 
+    pnl = sub.add_parser(
+        "painel", help="painel web de acompanhamento (somente leitura), em 127.0.0.1"
+    )
+    pnl.add_argument("--host", default="127.0.0.1", help="endereço de bind (padrão 127.0.0.1)")
+    pnl.add_argument("--porta", type=int, default=8765, help="porta (padrão 8765)")
+    pnl.set_defaults(func=cmd_painel)
+
     doctor = sub.add_parser("doctor", help="checa configuração, vault e acesso ao Discord")
     doctor.add_argument(
         "--testar-envio", action="store_true",
@@ -1033,6 +1040,27 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.set_defaults(func=cmd_doctor)
 
     return parser
+
+
+def cmd_painel(cfg: Config, args: argparse.Namespace) -> int:
+    """Sobe o painel de acompanhamento. Roda no host, não em container.
+
+    Ver `docs/PAINEL.md`: disparar `docker compose up` de dentro de um container
+    exigiria montar o socket do Docker, que é root no host — por um botão de
+    conveniência, num processo que também terá chat de LLM.
+    """
+    from .painel import Erro as PainelErro
+    from .painel import servir
+
+    cfg.validate_vault()
+    try:
+        return servir(cfg, host=args.host, porta=args.porta)
+    except PainelErro as exc:
+        print(f"Painel: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"Painel: não consegui abrir {args.host}:{args.porta} — {exc}", file=sys.stderr)
+        return 2
 
 
 def main(argv: list[str] | None = None) -> int:

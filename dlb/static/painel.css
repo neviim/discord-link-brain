@@ -1,0 +1,110 @@
+/* Painel do dlb — uma folha, sem framework.
+ *
+ * Claro e escuro pela preferência do sistema: o painel é para ser deixado aberto
+ * numa aba, e forçar fundo branco às onze da noite é hostil.
+ */
+
+:root {
+  --fundo: #fbfbfa;
+  --papel: #fff;
+  --tinta: #1c1c1a;
+  --fraco: #6b6b66;
+  --linha: #e3e3df;
+  --acento: #2f6f4f;
+  --alerta: #8a4b1f;
+  --ruim: #9b2c2c;
+  --bom: #2f6f4f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fundo: #16171a;
+    --papel: #1d1f23;
+    --tinta: #e8e8e4;
+    --fraco: #9a9a94;
+    --linha: #2c2f35;
+    --acento: #7fc39b;
+    --alerta: #e0a068;
+    --ruim: #e08b8b;
+    --bom: #7fc39b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fundo);
+  color: var(--tinta);
+  font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--papel);
+  border-bottom: 1px solid var(--linha);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+header strong { font-size: 1.1rem; letter-spacing: 0.02em; }
+header nav { display: flex; gap: 1rem; flex: 1; }
+header .vault { color: var(--fraco); font-size: 0.85rem; }
+
+a { color: var(--acento); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav a.ativo { font-weight: 600; border-bottom: 2px solid var(--acento); }
+
+main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.05rem; margin: 2rem 0 0.5rem; color: var(--fraco); text-transform: uppercase; letter-spacing: 0.06em; }
+h3 { margin: 0; font-size: 0.8rem; color: var(--fraco); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.cartoes { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.75rem; }
+
+.cartao {
+  background: var(--papel);
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--linha);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+}
+.cartao.ok { border-left-color: var(--bom); }
+.cartao.alerta { border-left-color: var(--alerta); }
+.cartao .numero { font-size: 1.7rem; margin: 0.2rem 0; font-variant-numeric: tabular-nums; }
+.cartao .detalhe { margin: 0; font-size: 0.8rem; color: var(--fraco); }
+
+table { width: 100%; border-collapse: collapse; background: var(--papel); border: 1px solid var(--linha); border-radius: 6px; }
+th, td { text-align: left; padding: 0.45rem 0.7rem; border-bottom: 1px solid var(--linha); vertical-align: top; }
+th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fraco); font-weight: 600; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: color-mix(in srgb, var(--acento) 7%, transparent); }
+td { font-size: 0.9rem; }
+
+.selo { display: inline-block; padding: 0.05rem 0.45rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--linha); }
+.selo-ok { color: var(--bom); border-color: var(--bom); }
+.selo-falha, .selo-erro { color: var(--ruim); border-color: var(--ruim); }
+.selo-rodando { color: var(--acento); border-color: var(--acento); }
+.selo-recusado { color: var(--alerta); border-color: var(--alerta); }
+
+.detalhe, .vazio { color: var(--fraco); font-size: 0.85rem; }
+.vazio { padding: 1rem; background: var(--papel); border: 1px dashed var(--linha); border-radius: 6px; }
+
+.aviso { background: color-mix(in srgb, var(--alerta) 12%, transparent); border-left: 3px solid var(--alerta); padding: 0.6rem 0.9rem; border-radius: 4px; }
+
+.filtros { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.75rem 0; }
+.filtros a { font-size: 0.85rem; padding: 0.1rem 0.55rem; border: 1px solid var(--linha); border-radius: 999px; }
+.filtros a.ativo { border-color: var(--acento); font-weight: 600; }
+
+.busca { display: flex; gap: 0.5rem; margin: 0.75rem 0; }
+.busca input[type=search] { flex: 1; padding: 0.4rem 0.6rem; border: 1px solid var(--linha); border-radius: 6px; background: var(--papel); color: var(--tinta); }
+.busca button { padding: 0.4rem 0.9rem; border: 1px solid var(--acento); background: transparent; color: var(--acento); border-radius: 6px; cursor: pointer; }
+
+.recarga { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--fraco); }
+
+footer { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem 2rem; color: var(--fraco); font-size: 0.8rem; }
+code { font-size: 0.85em; background: color-mix(in srgb, var(--tinta) 8%, transparent); padding: 0.05rem 0.3rem; border-radius: 3px; }

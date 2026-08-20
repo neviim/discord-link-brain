@@ -113,6 +113,12 @@ class Config:
     processed_emoji: str = "✅"      # virou nota nesta execução
     duplicate_emoji: str = "📚"      # já estava documentado no Obsidian
 
+    # Quanto tempo sem heartbeat até considerar parado. Os mesmos valores que o
+    # healthcheck do container usa: o painel não pode ter uma opinião própria
+    # sobre "está vivo" e mostrar verde enquanto o Docker mostra `unhealthy`.
+    health_tolerance: int = 28800               # 8h — a grade padrão é de 6h
+    responder_health_tolerance: int = 300       # 5 min — a volta é de 60 em 60 s
+
     @property
     def auth_header(self) -> str:
         if self.discord_token_type.lower() == "bot":
@@ -194,6 +200,10 @@ class Config:
             ressurgir_resumo_max=int(os.environ.get("RESSURGIR_RESUMO_MAX", "220")),
             ressurgir_canal=os.environ.get("RESSURGIR_CANAL", ""),
             temas_limiar=int(os.environ.get("TEMAS_LIMIAR", "8")),
+            health_tolerance=int(os.environ.get("DLB_HEALTH_TOLERANCE", "28800")),
+            responder_health_tolerance=int(
+                os.environ.get("DLB_RESPONDER_HEALTH_TOLERANCE", "300")
+            ),
             heartbeat_responder=os.environ.get("DLB_HEARTBEAT", "")
             if os.environ.get("DLB_MODE") == "responder"
             else os.environ.get("DLB_HEARTBEAT_RESPONDER", ""),

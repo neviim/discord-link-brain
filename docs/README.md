@@ -11,8 +11,9 @@ para rodar. Aqui está o resto, separado por **o que você está tentando fazer*
 | rodar, agendar, recuperar histórico, resolver problema | [OPERACAO.md](OPERACAO.md) |
 | saber **por que** algo foi feito daquele jeito | [DECISOES.md](DECISOES.md) |
 | mexer no código, rodar teste, estender | [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md) |
+| acompanhar pelo navegador o que rodou e o que está no acervo | [PAINEL.md](PAINEL.md) |
 
-## Os dez comandos
+## Os onze comandos
 
 | Comando | O que faz | Gasta LLM? | Fala no Discord? |
 |---|---|---|---|
@@ -26,6 +27,7 @@ para rodar. Aqui está o resto, separado por **o que você está tentando fazer*
 | `dlb temas` | que conceitos viraram tema — relatório | não | não |
 | `dlb semana` | apanhado bruto dos últimos dias | não | não |
 | `dlb doctor` | confere configuração, vault e acesso | não | só com `--testar-envio` |
+| `dlb painel` | painel web de acompanhamento em `127.0.0.1` | não | não |
 
 Detalhe de uso: são executados como `python3 -m dlb <comando>` **a partir da raiz
 do projeto** (não há pacote instalado), ou `./dlb.sh dev <comando>` pelo container,

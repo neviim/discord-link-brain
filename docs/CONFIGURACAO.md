@@ -245,6 +245,7 @@ Docker.
 | `DLB_SYNC_ARGS` | — | Flags extras para o `sync`, ex.: `--no-enrich` |
 | `DLB_RUN_ON_START` | `1` | Roda uma vez ao subir |
 | `DLB_HEALTH_TOLERANCE` | `28800` | Segundos sem sync bem-sucedida até `unhealthy` (8h) |
+| `DLB_RESPONDER_HEALTH_TOLERANCE` | `300` | O mesmo para o `responder`, cuja volta é de 60 em 60 s |
 | `DLB_HEARTBEAT` | `/app/.state/heartbeat` | Arquivo que o healthcheck lê |
 
 Precedência: `INTERVAL` > `EVERY_HOURS` > `AT`.

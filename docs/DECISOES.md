@@ -658,6 +658,65 @@ desenho quebra — o aviso está no topo de `dlb/journal.py`.
 
 ---
 
+## O painel roda no host, e não dentro do container
+
+**Alternativa considerada:** um serviço a mais no `docker-compose.yml`, ao lado do
+`prod` e do `responder`. É o desenho que parece consistente com o resto — e o
+errado.
+
+O painel precisa poder disparar `docker compose up` (é o único jeito de aplicar
+`.env` novo — `restart` não relê, ver a decisão acima). De dentro de um container,
+isso exige montar `/var/run/docker.sock`, o que é **root no host**. Por um botão
+de conveniência, num processo que também vai ter chat de LLM lendo texto vindo da
+internet. O container é isolamento; furá-lo para ganhar comodidade troca a única
+garantia que ele dava.
+
+No host o painel é um processo comum, com o usuário do Dotcom, que já pode rodar
+`docker compose` porque é a máquina dele.
+
+**Desfazer custa:** o socket do Docker montado, ou um agente de execução separado
+com sua própria fronteira — mais peça do que o painel inteiro tem hoje.
+
+---
+
+## Índice derivado: permitido, com gatilho medido
+
+O painel lê `50_LINKS/` do disco a cada requisição, com memo por
+`(mtime_ns, size)` por arquivo. Sem índice. É o "passo certo antes do banco" que a
+decisão do SQLite acima já apontava.
+
+Números do acervo real (77 notas, 320 KB), medidos:
+
+| Operação | Tempo |
+|---|---|
+| `corpus.ler_links()` — parse de 77 notas | **105 ms** |
+| a mesma leitura pelo memo | **2,2 ms** |
+| uma nota editada no Obsidian | relê 1 de 77 |
+| página do painel inteira | ~3 ms |
+
+**O que a medição corrigiu:** a tabela do SQLite acima mede leitura de URLs de
+`10_FONTES/`, que é `1,7 ms` para 82 links. Ler o **acervo estruturado** é outra
+operação — parse de YAML por nota — e custa 105 ms para 77 notas, ~60× mais. O
+número da decisão antiga não vale para esta pergunta, e é o tipo de confusão que
+faria alguém concluir que sobra folga onde não sobra.
+
+Um índice em SQLite/FTS5 fica **permitido** — derivado, descartável,
+reconstruível a partir de `50_LINKS/`, nunca autoritativo, nunca guardando
+julgamento humano — quando **qualquer um** destes acontecer:
+
+1. `corpus.ler_links()` passar de **150 ms** no acervo real, medido; ou
+2. uma tela precisar de faceta ou paginação que o memo não sustente em um request; ou
+3. `doctor` mostrar o prompt de busca encostando em `BUSCA_MAX_CHARS`.
+
+Estamos a **65% do gatilho 1** com 77 notas. No ritmo de ~85 links/ano ele chega
+em uns dois anos — mas chega, e quando chegar a porta está aberta e documentada em
+vez de fechada por gosto.
+
+**Desfazer custa:** enquanto não existir, nada. Depois de existir, a rotina de
+reconciliação com o vault que a decisão do SQLite descreve.
+
+---
+
 ## O que ainda não foi resolvido
 
 - **`cli.py` testado pela metade** (1041 linhas, 68%). `sync` e `backfill` têm
