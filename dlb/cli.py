@@ -21,6 +21,7 @@ from .discord_client import (
 )
 from .enrich import fetch_meta
 from .extract import day_of_message, extract_links, group_by_day
+from . import journal
 from .corpus import (
     da_semana,
     do_mes,
@@ -163,6 +164,7 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
     for channel_id in channels:
         state = store.load(channel_id)
         label = cfg.channel_names.get(channel_id) or state.channel_name
+        journal.contar("canais")
 
         try:
             if not label:
@@ -181,6 +183,7 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
             messages = list(client.iter_messages(channel_id, after=after))
         except DiscordError as exc:
             print(f"[#{label or channel_id}] ERRO: {exc}", file=sys.stderr)
+            journal.contar("erros")
             exit_code = 1
             continue
 
@@ -191,6 +194,7 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
         # O cursor avança para o fim do que foi *buscado*, não do que sobrou
         # depois dos filtros — senão mensagem descartada é rebuscada para sempre.
         ultimo_id = messages[-1]["id"]
+        journal.contar("mensagens", len(messages))
 
         # Segunda barreira contra reprocessar: mesmo que o cursor se perca
         # (`.state` apagado, `--since` largo), o que já foi marcado fica de fora.
@@ -227,12 +231,14 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
             hits = [h for h in hits if h.url not in arquivadas]
             if repetidos:
                 _log(f"[#{label}] {len(repetidos)} link(s) já arquivado(s) antes — ignorando.")
+                journal.contar("links_repetidos", len(repetidos))
                 # Marca mesmo sem virar nota nova: o sentido da marca é você
                 # olhar o Discord e saber que aquele link já está no Obsidian.
                 if not args.dry_run:
                     _marcar(cfg, client, channel_id, repetidos, cfg.duplicate_emoji)
 
         _log(f"[#{label}] {len(messages)} mensagem(ns), {len(hits)} link(s) novo(s).")
+        journal.contar("links_novos", len(hits))
         if not hits:
             if not args.dry_run:
                 state.last_message_id, state.channel_name = ultimo_id, label
@@ -247,10 +253,12 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
                 notes = classify(cfg, day_hits, metas)
             except ClassifyError as exc:
                 print(f"  {day}: ERRO na classificação: {exc}", file=sys.stderr)
+                journal.contar("erros")
                 exit_code = 1
                 continue
 
             preparar_moc()
+            journal.contar("notas", len(notes))
             _log("    " + str(vault.write_fonte(label, day, notes, force=args.force)))
             # Nota atômica antes do diário: o bullet do diário aponta para ela por
             # wikilink, e o nome do arquivo só existe depois de escrita.
@@ -1028,13 +1036,35 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Ponto de entrada. Registra a execução e recusa a segunda simultânea.
+
+    Códigos de saída: 0 deu certo, 1 o comando falhou, 2 configuração, **3 outra
+    execução está com o lock**. Três é separado porque a resposta certa é
+    diferente: não é para investigar nem para insistir, é para esperar.
+    """
     args = build_parser().parse_args(argv)
     try:
         cfg = Config.from_env()
     except ConfigError as exc:
         print(f"Configuração: {exc}", file=sys.stderr)
         return 2
-    return args.func(cfg, args)
+
+    # `args.command` vem do `dest` do subparser, não do nome da função: derivar de
+    # `func.__name__` amarraria o lock a um detalhe de refatoração — renomear
+    # `cmd_sync` desligaria a proteção do cursor sem nenhum erro aparecer.
+    comando = args.command
+    with journal.registrar(
+        cfg.state_dir, comando, list(argv if argv is not None else sys.argv[1:])
+    ) as run:
+        try:
+            with journal.travar_comando(cfg.state_dir, comando, run.id):
+                codigo = args.func(cfg, args)
+        except journal.Ocupado as exc:
+            print(f"Recusado: {exc}", file=sys.stderr)
+            run.recusar(str(exc))
+            return 3
+        run.fechar(exit_code=codigo)
+        return codigo
 
 
 if __name__ == "__main__":

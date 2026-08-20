@@ -583,6 +583,81 @@ com outra tolerância.
 
 ---
 
+## Histórico de execução: um diretório por run, não um arquivo de log
+
+**O problema:** o que o sistema fez ontem só existia no log do Docker. Ele
+rotaciona, não é consultável e some quando o container é recriado. Qualquer
+pergunta do tipo "rodou hoje?", "quantos links entraram na semana?" ou "por que
+não entrou nada de terça?" não tinha onde ser respondida.
+
+**Alternativa considerada:** um `runs.jsonl` com uma linha por execução. É o
+desenho óbvio e o errado aqui. O laço do container, um `sync` disparado à mão no
+host e (adiante) um run disparado pelo painel são **três processos anexando ao
+mesmo arquivo**. Escrita concorrente sem lock intercala linha, e o defeito
+aparece como "o histórico está estranho", meses depois, sem como reproduzir.
+
+    .state/runs/20260820T001503Z-sync-4127/summary.json
+
+Diretório por run torna a corrida **impossível por construção** em vez de
+administrada: um escritor por diretório, e o nome carrega o pid de quem escreve.
+É a mesma regra que `state.py` já aplica ao separar o cursor do `responder` do
+cursor do `sync`.
+
+O nome começa com o instante em ISO compacto, então ordenação lexicográfica é
+ordenação cronológica: listar as vinte últimas execuções não abre arquivo nenhum
+para decidir a ordem.
+
+Um diretório para um arquivo só parece exagero hoje. É o ponto: quando o passo a
+passo estruturado (`events.jsonl`) entrar, ele entra ao lado do `summary.json`
+sem migração e sem mudar quem lê o resumo.
+
+**Poda:** 500 runs, fixo no código. Quatro comandos por ciclo, quatro ciclos por
+dia passam de 5 mil diretórios por ano. Não é configurável de propósito — é
+detalhe do histórico, não política que alguém precise ajustar.
+
+**Desfazer custa:** nada externo depende do formato ainda. Trocar por banco
+custaria a reconciliação que a decisão do SQLite acima já descreve.
+
+---
+
+## O lock recusa em vez de esperar
+
+**O problema:** duas execuções de `sync` (ou `sync` e `backfill`) sobre o mesmo
+canal fazem read-modify-write no mesmo `.state/<canal>.json`. A atualização de
+uma se perde, e o efeito não é perder trabalho — é **um trecho do canal deixar de
+ser lido**, que a deduplicação por URL nunca recria, porque ela só sabe do que
+foi lido.
+
+Isto nunca aconteceu enquanto o único disparador era o laço do container, que é
+sequencial. Passa a poder acontecer no minuto em que existir um botão.
+
+`flock` em `.state/locks/canais.lock`, tomado dentro do `main()` — **não** no
+código que dispara job. Fosse no disparador, o `sync` do container não o tomaria,
+e a colisão que o lock existe para impedir seria exatamente a que passaria. É
+também o motivo de o painel disparar `python3 -m dlb sync` em subprocess em vez
+de chamar `cmd_sync()`: um só caminho, uma só proteção.
+
+**Recusa, não espera.** Um `sync` pode levar minutos; uma requisição de painel
+pendurada nisso parece travamento, e enfileirar dois syncs seguidos não vale nada
+— o segundo não teria o que ler. A recusa sai com código **3** (distinto de 1,
+que é falha de verdade) e a mensagem diz quem está com o lock e desde quando.
+
+O metadado em `canais.json` é conveniência, não autoridade: processo morto de
+`kill -9` deixa o arquivo para trás. A verdade é o `flock` — se ele está livre, o
+metadado é lixo. É assim que "rodando" se distingue de "morreu no meio" sem
+inventar timeout.
+
+`responder` fica fora do lock: cursor próprio, escritor próprio, e roda de 60 em
+60 segundos. Travá-lo junto do sync deixaria o bot mudo durante um sync longo, de
+graça.
+
+**Vale em bind mount local; não vale em NFS.** Se `.state` migrar para rede, este
+desenho quebra — o aviso está no topo de `dlb/journal.py`.
+
+**Desfazer custa:** nada. Remover o lock devolve o comportamento de hoje.
+
+---
+
 ## O que ainda não foi resolvido
 
 - **`cli.py` testado pela metade** (1041 linhas, 68%). `sync` e `backfill` têm

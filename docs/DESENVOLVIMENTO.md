@@ -34,6 +34,7 @@ arquivo, linha e o que era esperado.
 | `test_responder.py` | 28 | **o bot falando em público**: nunca duas vezes, nunca a si mesmo, marca só depois de postar |
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
+| `test_journal.py` | 25 | **o histórico e o lock**: um escritor por run, recusa em vez de espera, e falha ≠ recusa |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
 | `test_busca.py` | 21 | acento na pergunta, IDF, e **a URL vindo do acervo e não do modelo** |
 | `test_retry.py` | 21 | **a escada de 429/5xx**: esperar o certo, desistir na hora certa, e nunca mencionar ninguém |
@@ -43,7 +44,7 @@ arquivo, linha e o que era esperado.
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| **total** | **465** | 86% das linhas de `dlb/` |
+| **total** | **490** | 87% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -61,6 +62,7 @@ Estado atual:
 
 ```
 dlb/config.py         100%
+dlb/journal.py         97%
 dlb/ressurgir.py      100%
 dlb/state.py          100%
 dlb/extract.py         98%
@@ -76,8 +78,8 @@ dlb/responder.py       89%
 dlb/discord_client.py  88%
 dlb/classify.py        72%
 dlb/sintese.py         68%   ← o que falta é caminho de subprocess
-dlb/cli.py             68%   ← falta doctor/laço; ver DECISOES.md
-TOTAL                  86%
+dlb/cli.py             69%   ← falta doctor/laço; ver DECISOES.md
+TOTAL                  87%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que
