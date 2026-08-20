@@ -194,3 +194,15 @@ pre.saida {
   overflow-x: auto;
   white-space: pre-wrap;
 }
+
+/* Propostas do chat: o modelo oferece, o humano clica. Linha discreta — se
+   parecesse com a resposta, viraria "a IA decidiu" em vez de "escolha sua". */
+.propostas { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed var(--linha); }
+.proposta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; }
+.proposta select, .proposta button { font: inherit; padding: 0.15rem 0.5rem; border: 1px solid var(--linha); border-radius: 5px; background: var(--fundo); color: var(--tinta); }
+.proposta button { border-color: var(--acento); color: var(--acento); cursor: pointer; }
+
+/* Triagem na tabela do acervo: compacta, porque são até 300 linhas. */
+.triar { display: flex; gap: 0.25rem; }
+.triar select { font-size: 0.8rem; padding: 0.1rem 0.3rem; border: 1px solid var(--linha); border-radius: 4px; background: var(--fundo); color: var(--tinta); }
+.triar button { font-size: 0.8rem; padding: 0.1rem 0.45rem; border: 1px solid var(--linha); border-radius: 4px; background: transparent; color: var(--acento); cursor: pointer; }

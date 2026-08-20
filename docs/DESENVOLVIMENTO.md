@@ -25,7 +25,7 @@ arquivo, linha e o que era esperado.
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `test_gestor.py` | 37 | **as oito regras do gestor**: uma classe por regra, e cada uma prova que dispara *e* que fica calada |
-| `test_config_tela.py` | 52 | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
+| `test_config_tela.py` | 64 | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, reparo do link da mensagem |
 | `test_ressurgir_temas.py` | 38 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, regeneração |
@@ -43,6 +43,7 @@ arquivo, linha e o que era esperado.
 | `test_acervo.py` | 15 | o memo por `mtime`: editar no Obsidian relê **uma** nota, apagada sai do cache |
 | `test_env_compose.py` | 32 | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
 | `test_chat.py` | 18 | **a fila de um**: duas perguntas simultâneas não abrem dois `codex`, e o teto por hora sobrevive a reinício | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
+| `test_acoes.py` | 24 | **a escrita cirúrgica da triagem** (arquivo idêntico fora de duas linhas) e a lista branca de comandos |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
 | `test_busca.py` | 21 | acento na pergunta, IDF, e **a URL vindo do acervo e não do modelo** |
 | `test_retry.py` | 21 | **a escada de 429/5xx**: esperar o certo, desistir na hora certa, e nunca mencionar ninguém |
@@ -52,7 +53,7 @@ arquivo, linha e o que era esperado.
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| **total** | **734** | 89% das linhas de `dlb/` |
+| **total** | **771** | 89% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -71,6 +72,7 @@ Estado atual:
 ```
 dlb/config.py         100%
 dlb/chat.py           100%
+dlb/acoes.py           97%
 dlb/env_io.py          99%
 dlb/painel_schema.py   95%
 dlb/compose.py        100%

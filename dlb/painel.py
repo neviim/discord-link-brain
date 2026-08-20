@@ -696,6 +696,56 @@ def _troca(registro: dict) -> Raw:
     )
 
 
+def _propostas_html(estado: Estado, registro) -> Raw:
+    """O que o chat oferece depois de responder. Cada oferta é um formulário.
+
+    Formulário, e não link: a ação escreve, então passa pela mesma fronteira de
+    mutação do resto — CSRF, origem, 303. E o rótulo diz o que vai acontecer, em
+    vez de um botão "aplicar" genérico.
+    """
+    ofertas = acoes.propostas(registro.pergunta, registro.texto, registro.usados)
+    if not ofertas:
+        return Raw("")
+    blocos = []
+    for oferta in ofertas:
+        if oferta["tipo"] == "triagem":
+            blocos.append(
+                substituir(
+                    """<form method=post action="/acervo/triar" class=proposta>
+  <input type=hidden name=csrf value="$csrf">
+  <input type=hidden name=nota value="$nota">
+  <input type=hidden name=volta value="/chat">
+  <span>$rotulo</span>
+  <select name=para>$opcoes</select>
+  <button type=submit class=secundario>marcar</button>
+</form>""",
+                    csrf=estado.csrf,
+                    nota=oferta["nota"],
+                    rotulo=oferta["rotulo"],
+                    opcoes=juntar(
+                        [substituir("<option value=\"$v\">$v</option>", v=o) for o in oferta["opcoes"]],
+                        "",
+                    ),
+                )
+            )
+        else:
+            blocos.append(
+                substituir(
+                    """<form method=post action="/executar" class=proposta>
+  <input type=hidden name=csrf value="$csrf">
+  <input type=hidden name=comando value="$comando">
+  <input type=hidden name=volta value="/chat">
+  <span>$rotulo</span>
+  <button type=submit class=secundario>rodar $comando</button>
+</form>""",
+                    csrf=estado.csrf,
+                    comando=oferta["comando"],
+                    rotulo=oferta["rotulo"],
+                )
+            )
+    return Raw("<div class=propostas>" + str(juntar(blocos, "")) + "</div>")
+
+
 def _view_chat(estado: Estado, consulta: dict, pergunta: str = "") -> str:
     situacao = estado.chat.situacao()
     corpo = substituir(
@@ -708,6 +758,7 @@ por binário local — sem chave de API.</p>
   <button type=submit>perguntar</button>
 </form>
 <p class=detalhe>$situacao</p>
+$aviso
 <section class=trocas>$trocas</section>""",
         backend=situacao["backend"],
         pergunta=pergunta,
@@ -716,7 +767,20 @@ por binário local — sem chave de API.</p>
             + (" · uma pergunta rodando agora" if situacao["ocupado"] else "")
             + " · uma chamada de modelo por vez no painel inteiro"
         ),
-        trocas=juntar([_troca(r.como_dict()) for r in estado.chat.historico], "")
+        aviso=estado.pegar_aviso(),
+        trocas=juntar(
+            [
+                Raw(
+                    str(_troca(r.como_dict()))
+                    # As ofertas acompanham só a resposta mais recente: repetir
+                    # botão em toda troca antiga transformaria a tela num painel
+                    # de botões em vez de uma conversa.
+                    + (str(_propostas_html(estado, r)) if i == 0 and not r.erro else "")
+                )
+                for i, r in enumerate(estado.chat.historico)
+            ],
+            "",
+        )
         or Raw("<p class=vazio>Nenhuma pergunta ainda nesta sessão do painel.</p>"),
     )
     return pagina("Chat", corpo, ativo="/chat", vault=str(estado.cfg.vault_path))
