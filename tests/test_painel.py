@@ -433,6 +433,34 @@ class TestFronteira(PainelCase):
             with self.subTest(tentativa):
                 self.assertEqual(self.pegar(tentativa)[0], 404)
 
+    def test_host_de_outro_dominio_e_recusado(self):
+        """Fecha o caminho de **DNS rebinding**: uma página em `evil.com` aponta o
+        domínio para `127.0.0.1`, e o navegador manda `Host: evil.com` com
+        `Origin: http://evil.com`. Os dois batem entre si, então a checagem de
+        origem passaria — e, sendo mesma origem para o navegador, a página leria a
+        resposta e com ela o token de CSRF.
+
+        Achado relendo a fronteira de olho fresco, depois de tudo pronto.
+        """
+        for host in ("evil.com", f"evil.com:{self.servidor.server_port}", "192.168.1.9:8765"):
+            with self.subTest(host):
+                codigo, _, corpo = self.pegar("/", cabecalhos={"Host": host})
+                self.assertEqual(codigo, 421)
+                self.assertIn("Host não atendido", corpo)
+
+    def test_host_de_loopback_passa(self):
+        for host in (f"127.0.0.1:{self.servidor.server_port}",
+                     f"localhost:{self.servidor.server_port}"):
+            with self.subTest(host):
+                self.assertEqual(self.pegar("/", cabecalhos={"Host": host})[0], 200)
+
+    def test_porta_errada_no_host_e_recusada(self):
+        self.assertEqual(self.pegar("/", cabecalhos={"Host": "127.0.0.1:9999"})[0], 421)
+
+    def test_post_com_host_estranho_nao_chega_a_mutacao(self):
+        codigo, _, _ = self.pegar("/config/salvar", metodo="POST", cabecalhos={"Host": "evil.com"})
+        self.assertEqual(codigo, 421)
+
     def test_cabecalhos_de_seguranca_e_de_cache(self):
         _, cabecalhos, _ = self.pegar("/")
         self.assertEqual(cabecalhos["Cache-Control"], "no-store")
