@@ -38,7 +38,7 @@ arquivo, linha e o que era esperado.
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
 | `test_agenda.py` | 27 | **a paridade com o `scheduler.sh`**: executa o Python embutido no shell e compara |
 | `test_journal.py` | 27 | **o histórico e o lock**: um escritor por run, recusa em vez de espera, e falha ≠ recusa |
-| `test_painel.py` | 44 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
+| `test_painel.py` | 60 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
 | `test_render.py` | 17 | **o escape por construção** — a condição da escolha de não usar Jinja |
 | `test_acervo.py` | 15 | o memo por `mtime`: editar no Obsidian relê **uma** nota, apagada sai do cache |
 | `test_env_compose.py` | 33 | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
@@ -53,7 +53,7 @@ arquivo, linha e o que era esperado.
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| **total** | **774** | 89% das linhas de `dlb/` |
+| **total** | **790** | 89% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -81,7 +81,7 @@ dlb/agenda.py          99%
 dlb/gestor.py          99%
 dlb/journal.py         97%
 dlb/acervo.py          95%
-dlb/painel.py          92%
+dlb/painel.py          90%
 dlb/ressurgir.py      100%
 dlb/state.py          100%
 dlb/extract.py         98%

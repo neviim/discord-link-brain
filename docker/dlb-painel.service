@@ -1,0 +1,63 @@
+# Serviço de usuário para o painel do dlb.
+#
+# Fica em `docker/` junto do resto do material de operação, mas **não** roda em
+# container: o painel dispara `docker compose up`, e de dentro de um container isso
+# exigiria montar o socket do Docker, que é root no host. Ver docs/DECISOES.md.
+#
+# Instalar (serviço de usuário, sem sudo):
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp docker/dlb-painel.service ~/.config/systemd/user/
+#   # ajuste WorkingDirectory se o projeto não estiver em ~/Developer/discord-link-brain
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now dlb-painel
+#   systemctl --user status dlb-painel
+#
+# Para o painel continuar de pé depois de você sair da sessão:
+#
+#   sudo loginctl enable-linger "$USER"
+#
+# Log:  journalctl --user -u dlb-painel -f
+# Parar: systemctl --user stop dlb-painel
+
+[Unit]
+Description=Painel do discord-link-brain
+Documentation=file:%h/Developer/discord-link-brain/docs/PAINEL.md
+# O painel lê o vault e fala com o docker, mas não depende deles para subir: ele
+# existe justamente para mostrar que algo está errado quando está.
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Developer/discord-link-brain
+ExecStart=/usr/bin/python3 -m dlb painel --porta 8765
+
+# `SIGTERM` é o que o `systemctl stop` manda, e o painel o trata: fecha o run no
+# journal em vez de deixá-lo eternamente "rodando".
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+Restart=on-failure
+RestartSec=5
+
+# Sem `EnvironmentFile`: o painel lê o `.env` do projeto por conta própria, a cada
+# requisição no que importa. Duplicar aqui criaria uma segunda fonte de verdade que
+# só se atualiza com `daemon-reload` — exatamente o defeito do `restart` que não
+# relê o `.env`, de novo.
+
+# O painel escreve em `.state/` e no `.env` do projeto, e lê o vault. Nada fora
+# disso, então o endurecimento pode ser agressivo sem quebrar nada.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+# `ProtectSystem=strict` não serve: o painel precisa escrever no diretório do
+# projeto e ler o vault, os dois em $HOME.
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

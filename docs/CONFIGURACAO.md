@@ -244,6 +244,7 @@ Docker.
 | `DLB_SYNC_INTERVAL` | — | Segundos corridos, sem ancoragem. Vence os dois acima |
 | `DLB_SYNC_ARGS` | — | Flags extras para o `sync`, ex.: `--no-enrich` |
 | `DLB_RUN_ON_START` | `1` | Roda uma vez ao subir |
+| `PAINEL_TOKEN` | — | Senha do painel. Vazio = sem auth e só em `127.0.0.1` |
 | `PAINEL_CHAT_MAX_POR_HORA` | `20` | Chamadas de modelo por hora que o chat do painel pode fazer |
 | `PAINEL_CHAT_ESPERA_S` | `120` | Quanto uma pergunta espera **na fila** do painel (não é timeout do modelo — esse é o `SINTESE_TIMEOUT`) |
 | `DLB_HEALTH_TOLERANCE` | `28800` | Segundos sem sync bem-sucedida até `unhealthy` (8h) |

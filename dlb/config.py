@@ -113,6 +113,11 @@ class Config:
     painel_chat_max_por_hora: int = 20
     painel_chat_espera_s: float = 120.0     # espera na fila, não timeout do modelo
 
+    # Token do painel. Vazio = sem autenticação, e só em loopback: é o caso do
+    # `python3 -m dlb painel` no próprio terminal. Preenchido, o painel pede o
+    # token uma vez e guarda sessão em cookie `HttpOnly`.
+    painel_token: str = ""
+
     # O painel precisa ler o **arquivo**, não o ambiente do processo:
     # `from_env` usa `setdefault`, então `os.environ` é uma mistura de `.env` com
     # o que já estava exportado no shell. Para a tela dizer "o arquivo diz X",
@@ -213,6 +218,7 @@ class Config:
             ressurgir_resumo_max=int(os.environ.get("RESSURGIR_RESUMO_MAX", "220")),
             ressurgir_canal=os.environ.get("RESSURGIR_CANAL", ""),
             temas_limiar=int(os.environ.get("TEMAS_LIMIAR", "8")),
+            painel_token=os.environ.get("PAINEL_TOKEN", "").strip(),
             painel_chat_max_por_hora=int(os.environ.get("PAINEL_CHAT_MAX_POR_HORA", "20")),
             painel_chat_espera_s=float(os.environ.get("PAINEL_CHAT_ESPERA_S", "120")),
             health_tolerance=int(os.environ.get("DLB_HEALTH_TOLERANCE", "28800")),

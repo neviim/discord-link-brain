@@ -240,13 +240,63 @@ convincente para uma decisão que não é da máquina. Um modelo marcando um lin
 `Origin`, CSRF, token), e não antes — senão existiria uma janela com botão e sem
 guarda.
 
+## Autenticação
+
+Sem `PAINEL_TOKEN` no `.env`, o painel **não pede nada** e só sobe em `127.0.0.1`:
+quem alcança a porta já está na máquina, e pedir senha para isso só criaria
+fricção. É o caso normal de `python3 -m dlb painel` no próprio terminal.
+
+Com `PAINEL_TOKEN` preenchido, o painel pede o token uma vez e guarda a sessão num
+cookie:
+
+- comparação com `hmac.compare_digest` — `==` em segredo vaza o tamanho do prefixo
+  comum pelo tempo de resposta;
+- cookie `HttpOnly`, então um XSS não rouba a sessão;
+- cookie `SameSite=Strict`, então o navegador não o manda em requisição vinda de
+  outro site — isso fecha o CSRF **por baixo** do token de formulário;
+- sessão em memória: reiniciar o painel derruba todas. São segundos para entrar de
+  novo, e guardar sessão em disco pediria decidir expiração e rotação.
+
+Sem sessão, tela responde **401** com a página de login e `/api/*` responde 401 em
+JSON. `POST` de mutação sem sessão é 401 **antes** da checagem de CSRF: quem não
+entrou não chega a ser avaliado. Token errado não diz se errou o token ou se ele
+existe.
+
+O CSS e o JS ficam abertos — a tela de login precisa deles, e não há neles nada que
+não esteja no repositório.
+
+## Subir junto com a máquina
+
+`docker/dlb-painel.service` é um serviço **de usuário** (não precisa de sudo):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp docker/dlb-painel.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now dlb-painel
+journalctl --user -u dlb-painel -f
+```
+
+Para continuar de pé depois de você sair da sessão: `sudo loginctl enable-linger $USER`.
+
+Duas escolhas dentro do arquivo:
+
+- **`KillSignal=SIGTERM` e o painel trata o sinal.** Sinal não é exceção, então sem
+  o tratador `systemctl stop` deixaria o run do painel eternamente "rodando" no
+  journal. Descoberto matando o painel à mão durante os testes.
+- **Sem `EnvironmentFile`.** O painel lê o `.env` do projeto por conta própria.
+  Duplicar aqui criaria uma segunda fonte de verdade que só atualiza com
+  `daemon-reload` — exatamente o defeito do `restart` que não relê o `.env`, de novo.
+
 ## Por que só em `127.0.0.1`
 
-`python3 -m dlb painel --host 0.0.0.0` **recusa subir**, de propósito.
-`http.server` não tem timeout de leitura nem limite de conexão: como servidor de
-borda, uma conexão lenta o segura. Para acessar de outra máquina (tailnet, por
-exemplo), ponha um proxy de verdade na frente, com TLS e timeouts — e só então
-exponha. A decisão está em `docs/DECISOES.md`.
+`python3 -m dlb painel --host 0.0.0.0` **recusa subir sem `PAINEL_TOKEN`**: sem
+token, quem alcança a porta entra.
+
+Com token, sobe — e imprime um aviso, porque ainda falta TLS. `http.server` não tem
+timeout de leitura nem limite de conexão, e o token viaja em texto puro. Isso só é
+aceitável dentro de rede já criptografada, como uma tailnet. Fora dela, proxy de
+verdade na frente, com TLS e timeouts. A decisão está em `docs/DECISOES.md`.
 
 Túnel SSH resolve o caso comum sem proxy nenhum:
 
@@ -275,9 +325,3 @@ navegador. Aba em segundo plano não recarrega.
 | `.state/locks/canais.{lock,json}` | lock de `sync`/`backfill` e quem está com ele |
 | `.state/heartbeat`, `.state/heartbeat-responder` | idade do último ciclo bem-sucedido |
 | `.state/<canal>.json` | cursor por canal, lido pelo painel via `Store` |
-
-## Subir junto com a máquina
-
-Enquanto o serviço systemd não entra (fase 7 do plano), o jeito honesto é rodar à
-mão ou num `tmux`. O painel não é um daemon ainda: não tem `--daemon`, não escreve
-pidfile e o log vai para o stdout.
