@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import journal
+from . import gestor, journal
 from .acervo import Acervo, filtrar, resumo
 from .config import Config
 from .render import Raw, juntar, pagina, substituir, tabela
@@ -136,6 +136,14 @@ class Estado:
     def execucoes(self, limite: int | None = 30, comando: str | None = None) -> list[dict]:
         return journal.listar(self.cfg.state_dir, limite=limite, comando=comando)
 
+    # Os quatro comandos do ciclo do agendador. O painel mostra "última vez" de
+    # cada um porque três deles não escrevem heartbeat nenhum — sem isto, um
+    # backfill que falha todo dia falharia em silêncio.
+    CICLO = ("sync", "backfill", "sintese", "ressurgir")
+
+    def ultimos(self) -> dict:
+        return {cmd: journal.ultimo(self.cfg.state_dir, cmd) for cmd in self.CICLO}
+
     def lock(self) -> dict | None:
         return journal.dono(self.cfg.state_dir, "canais")
 
@@ -155,8 +163,19 @@ class Estado:
             "leitura": vars(self.acervo.ultima),
             "cursores": self.cursores(),
             "ultimas_execucoes": self.execucoes(limite=10),
+            "ultimos": self.ultimos(),
             "lock": self.lock(),
         }
+
+    def com_alertas(self) -> dict:
+        """A visão mais o que as oito regras do gestor concluíram sobre ela.
+
+        As regras são função pura sobre este dicionário — recebem exatamente o que
+        a tela recebe, e por isso podem ser testadas fabricando estado.
+        """
+        visao = self.visao_geral()
+        visao["alertas"] = [a.como_dict() for a in gestor.avaliar(visao)]
+        return visao
 
 
 # ------------------------------------------------------------------------ HTML
@@ -171,6 +190,44 @@ _CARTAO = """<article class="cartao $tom">
 
 def _cartao(titulo: str, valor: object, detalhe: str = "", tom: str = "") -> Raw:
     return substituir(_CARTAO, titulo=titulo, valor=valor, detalhe=detalhe, tom=tom)
+
+
+_ALERTA = """<article class="faixa faixa-$nivel">
+  <h3>$titulo</h3>
+  <p class=evidencia>$evidencia</p>
+  <p class=acao>$acao</p>
+</article>"""
+
+
+def _alertas(lista: list[dict]) -> Raw:
+    """Os alertas do gestor, mais grave primeiro.
+
+    Silêncio é resposta: quando nada pede ação, a tela diz isso em uma linha em
+    vez de mostrar oito verdinhos. Painel que sempre tem o que mostrar ensina a
+    não olhar.
+    """
+    pedem_acao = [a for a in lista if a["nivel"] in {"alerta", "atencao"}]
+    if not lista:
+        return Raw('<p class=quieto>Nada pedindo atenção — as oito regras do gestor passaram.</p>')
+    cabecalho = (
+        Raw("")
+        if pedem_acao
+        else Raw('<p class=quieto>Nada quebrado. O que segue é trabalho disponível, não problema.</p>')
+    )
+    return juntar(
+        [cabecalho]
+        + [
+            substituir(
+                _ALERTA,
+                nivel=a["nivel"],
+                titulo=a["titulo"],
+                evidencia=a["evidencia"],
+                acao=a["acao"],
+            )
+            for a in lista
+        ],
+        "",
+    )
 
 
 def _selo(status: str) -> Raw:
@@ -210,7 +267,7 @@ def _tabela_execucoes(runs: list[dict]) -> Raw:
 
 
 def _view_painel(estado: Estado) -> str:
-    dados = estado.visao_geral()
+    dados = estado.com_alertas()
     bat, tol = dados["heartbeats"], dados["tolerancia_s"]
     acervo = dados["acervo"]
     triagem = acervo["por_triagem"]
@@ -261,6 +318,12 @@ def _view_painel(estado: Estado) -> str:
 $aviso_lock
 <section class=cartoes>$cartoes</section>
 
+<h2>Gestor</h2>
+<section class=alertas>$alertas</section>
+
+<h2>O ciclo</h2>
+$ciclo
+
 <h2>Canais</h2>
 $cursores
 
@@ -272,6 +335,21 @@ $execucoes
 <p class=detalhe>$leitura</p>""",
         aviso_lock=aviso_lock,
         cartoes=cartoes,
+        alertas=_alertas(dados["alertas"]),
+        ciclo=tabela(
+            ["comando", "última vez", "status", "duração", "contadores"],
+            [
+                [
+                    comando,
+                    "nunca" if not run else (run.get("inicio") or "")[:19].replace("T", " "),
+                    _selo((run or {}).get("status") or "sem registro"),
+                    "—" if not run or run.get("duracao_s") is None else f"{run['duracao_s']:.1f} s",
+                    ", ".join(f"{k}: {v}" for k, v in ((run or {}).get("contadores") or {}).items()) or "—",
+                ]
+                for comando, run in dados["ultimos"].items()
+            ],
+            vazio="Nenhum comando do ciclo registrado ainda.",
+        ),
         cursores=tabela(
             ["canal", "nome", "última mensagem", "último run", "histórico"],
             [
@@ -441,7 +519,7 @@ class Handler(BaseHTTPRequestHandler):
             elif rota == "/acervo":
                 self._html(_view_acervo(self.estado, consulta), corpo)
             elif rota == "/api/estado":
-                self._json(self.estado.visao_geral(), corpo)
+                self._json(self.estado.com_alertas(), corpo)
             elif rota == "/api/execucoes":
                 self._json(
                     {"execucoes": self.estado.execucoes(limite=_inteiro(consulta, "limite", 100))},

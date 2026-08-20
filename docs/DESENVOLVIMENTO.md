@@ -24,6 +24,7 @@ arquivo, linha e o que era esperado.
 
 | Arquivo | Testes | Cobre |
 |---|---|---|
+| `test_gestor.py` | 37 | **as oito regras do gestor**: uma classe por regra, e cada uma prova que dispara *e* que fica calada |
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, reparo do link da mensagem |
 | `test_ressurgir_temas.py` | 38 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, regeneração |
@@ -35,7 +36,7 @@ arquivo, linha e o que era esperado.
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
 | `test_journal.py` | 25 | **o histórico e o lock**: um escritor por run, recusa em vez de espera, e falha ≠ recusa |
-| `test_painel.py` | 23 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
+| `test_painel.py` | 27 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
 | `test_render.py` | 17 | **o escape por construção** — a condição da escolha de não usar Jinja |
 | `test_acervo.py` | 15 | o memo por `mtime`: editar no Obsidian relê **uma** nota, apagada sai do cache |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
@@ -47,7 +48,7 @@ arquivo, linha e o que era esperado.
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| **total** | **545** | 87% das linhas de `dlb/` |
+| **total** | **586** | 88% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -66,9 +67,10 @@ Estado atual:
 ```
 dlb/config.py         100%
 dlb/render.py         100%
+dlb/gestor.py          99%
 dlb/journal.py         97%
 dlb/acervo.py          95%
-dlb/painel.py          90%
+dlb/painel.py          91%
 dlb/ressurgir.py      100%
 dlb/state.py          100%
 dlb/extract.py         98%
@@ -85,7 +87,7 @@ dlb/discord_client.py  88%
 dlb/classify.py        72%
 dlb/sintese.py         68%   ← o que falta é caminho de subprocess
 dlb/cli.py             68%   ← falta doctor/laço; ver DECISOES.md
-TOTAL                  87%
+TOTAL                  88%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que

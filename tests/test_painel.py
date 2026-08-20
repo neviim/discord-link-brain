@@ -201,6 +201,36 @@ class TestAPI(PainelCase):
         self.assertLessEqual(len(self.json_de("/api/execucoes?limite=1")["execucoes"]), 1)
 
 
+class TestGestorNaTela(PainelCase):
+    def test_vault_novo_mostra_o_alerta_do_agendador(self):
+        """Sem heartbeat nenhum, a primeira coisa que a tela diz é que o
+        agendador não fechou ciclo — com evidência e ação, não só vermelho."""
+        _, _, html = self.pegar("/")
+        self.assertIn("faixa-alerta", html)
+        self.assertIn("O agendador não conclui um ciclo", html)
+        self.assertIn("dlb.sh prod", html)
+
+    def test_fila_de_triagem_aparece_como_atencao(self):
+        for i in range(45):
+            self.escrever(f"https://e.com/{i}", f"Nota {i}")
+        _, _, html = self.pegar("/")
+        self.assertIn("faixa-atencao", html)
+        self.assertIn("45 notas esperando triagem", html)
+
+    def test_api_estado_traz_os_alertas_do_gestor(self):
+        alertas = self.json_de("/api/estado")["alertas"]
+        self.assertEqual([a["chave"] for a in alertas], ["agendador_parado"])
+        for campo in ("nivel", "titulo", "evidencia", "acao", "dados"):
+            self.assertIn(campo, alertas[0])
+
+    def test_o_ciclo_mostra_os_quatro_comandos(self):
+        """Três dos quatro não escrevem heartbeat. Sem esta tabela, um `sintese`
+        que nunca roda é invisível."""
+        _, _, html = self.pegar("/")
+        for comando in ("sync", "backfill", "sintese", "ressurgir"):
+            self.assertIn(comando, html)
+
+
 class TestFronteira(PainelCase):
     def test_metodo_que_escreve_e_405_enquanto_nao_existe_guarda(self):
         for metodo in ("POST", "PUT", "DELETE", "PATCH"):

@@ -717,6 +717,37 @@ reconciliação com o vault que a decisão do SQLite descreve.
 
 ---
 
+## O gestor é regra, não agente
+
+O painel foi pedido com um "gestor" que orquestrasse e recomendasse o que olhar. A
+leitura fácil disso é um agente de LLM sobre o estado do sistema. Não é o que
+está aqui.
+
+As oito regras de `dlb/gestor.py` são comparação de número e de data — heartbeat
+contra tolerância, contagem de falhas consecutivas, tamanho da fila de triagem. Um
+modelo daria a mesma resposta com dezenas de segundos de latência e variação entre
+execuções, e não daria teste.
+
+O argumento que decide não é custo nem latência: **as regras funcionam quando o
+modelo está sem quota.** O painel é o terceiro consumidor do mesmo login `claude`
+/ `codex` (classificação, síntese, chat). O momento em que se abre o painel com
+mais urgência é justamente aquele em que a classificação diária falhou por falta
+de janela de uso — e um gestor que dependesse de modelo estaria mudo exatamente
+ali, ou pior, reportaria um erro que ele mesmo causou.
+
+A narração por LLM fica **opcional e por cima**: o modelo escreve em prosa um
+alerta que a regra já decidiu. A ordem importa e não é simetria — um narrador não
+pode inventar um problema, um decisor pode.
+
+Cada alerta carrega `evidencia` (o dado com número que o disparou) e `acao` (o
+comando ou a tela que resolve). Alerta sem evidência é palpite, e palpite ensina o
+leitor a ignorar o painel; alerta sem ação é ansiedade.
+
+**Desfazer custa:** nada — a narração é aditiva. Substituir as regras por um
+agente custaria a testabilidade inteira e a independência de quota.
+
+---
+
 ## O que ainda não foi resolvido
 
 - **`cli.py` testado pela metade** (1041 linhas, 68%). `sync` e `backfill` têm

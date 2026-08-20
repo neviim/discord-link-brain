@@ -28,6 +28,37 @@ curl -s localhost:8765/api/acervo     | jq '.total, .resumo.por_triagem'
 curl -s 'localhost:8765/api/acervo?q=nostr&triagem=inbox&limite=20' | jq '.no_filtro'
 ```
 
+## O gestor: as oito regras
+
+O bloco **Gestor** na tela inicial não é um resumo do que está acima — é a
+conclusão. Cada linha tem evidência com número e a ação que resolve.
+
+| Regra | Dispara quando | Nível |
+|---|---|---|
+| `agendador_parado` | heartbeat do sync mais velho que a tolerância, ou inexistente | alerta |
+| `responder_parado` | heartbeat do responder atrasado — **só se ele já rodou alguma vez** | alerta |
+| `ultimo_ciclo_falhou` | o último `sync` ou `backfill` terminou em falha ou erro | alerta |
+| `falhas_seguidas` | 3+ execuções consecutivas do mesmo comando em falha | alerta |
+| `run_pendurado` | run marcado `rodando` há 2h+ e o lock está livre | atenção |
+| `historico_parado` | backfill começado, não concluído, e sem execução há 48h | atenção |
+| `fila_de_triagem` | 40+ notas em `triagem: inbox` | atenção |
+| `conceitos_sem_pagina` | 3+ conceitos candidatos sem nota em `20_WIKI/` | info |
+
+Três níveis: **alerta** (quebrado agora), **atenção** (acumulando ou vai
+quebrar), **info** (trabalho disponível, nada errado). Quando nada pede ação a
+tela diz isso em uma linha, em vez de mostrar oito verdinhos — painel que sempre
+tem algo a mostrar ensina a não olhar.
+
+**Sem LLM.** São comparações de número e de data em `dlb/gestor.py`, função pura
+sobre o mesmo dicionário que a tela recebe. Custam zero token e funcionam quando o
+modelo está sem quota — que é exatamente quando o painel importa mais, porque a
+classificação diária acabou de falhar por isso. Cada regra tem teste que fabrica o
+estado que a dispara e outro que confirma que ela fica calada.
+
+Narração por LLM é opcional e entra junto do chat: o modelo **narra** alerta que a
+regra já decidiu, nunca decide qual alerta existe. Um narrador não pode inventar um
+problema; um decisor pode.
+
 ## O que os cartões significam
 
 **Agendador** e **Responder** mostram idade de heartbeat, não "o container

@@ -108,3 +108,23 @@ td { font-size: 0.9rem; }
 
 footer { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem 2rem; color: var(--fraco); font-size: 0.8rem; }
 code { font-size: 0.85em; background: color-mix(in srgb, var(--tinta) 8%, transparent); padding: 0.05rem 0.3rem; border-radius: 3px; }
+
+/* Gestor: faixa por alerta, cor pela gravidade. Três níveis e não cinco —
+   quem lê precisa distinguir "quebrou" de "vai acumular", não graduar. */
+.alertas { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.faixa {
+  background: var(--papel);
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--fraco);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+}
+.faixa h3 { color: var(--tinta); font-size: 0.95rem; text-transform: none; letter-spacing: 0; }
+.faixa-alerta { border-left-color: var(--ruim); }
+.faixa-atencao { border-left-color: var(--alerta); }
+.faixa-info { border-left-color: var(--acento); }
+.faixa .evidencia { margin: 0.25rem 0 0; font-size: 0.85rem; }
+.faixa .acao { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--fraco); }
+
+.quieto { color: var(--bom); font-size: 0.9rem; margin: 0 0 0.25rem; }
