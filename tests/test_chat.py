@@ -183,8 +183,13 @@ class TestFilaDeUm(ChatCase):
             t.join(timeout=10)
 
         self.assertEqual(len(self.chamadas), 2)          # as duas foram respondidas
-        self.assertEqual(max(self.simultaneos), 1)       # nunca duas ao mesmo tempo
-        self.assertEqual(len([r for r in saida if r.esperou_s > 0]), 1)
+        # Cada chamada viu concorrência 1: é a prova de serialização, e é livre de
+        # relógio. A versão anterior media `esperou_s > 0` numa das respostas e
+        # falhava em ~1 de 4 execuções — porque `_esperando` sobe **antes** do
+        # `acquire`, então o teste liberava o modelo antes de a segunda thread ter
+        # começado a esperar de verdade, e a espera arredondava para 0,0 s. O
+        # defeito era do teste; o código sempre serializou.
+        self.assertEqual(self.simultaneos, [1, 1])
 
     def test_a_terceira_e_recusada_em_vez_de_empilhar(self):
         """Fila de um: empilhar dez pedidos numa fila que consome quota é como se
