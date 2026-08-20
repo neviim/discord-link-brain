@@ -526,6 +526,50 @@ class TestTelaDeConfig(PainelCase):
         self.assertEqual(codigo, 403)
         self.assertIn("origem cruzada", corpo)
 
+    def test_origem_de_nome_publico_atras_de_proxy_passa(self):
+        """O defeito que apareceu no uso real, e o motivo de a checagem ter mudado.
+
+        Com proxy na frente — `tailscale serve`, nginx, qualquer um — o navegador
+        manda `Origin: https://dotcom.taile537f.ts.net` e o proxy reescreve o `Host`
+        para `127.0.0.1:8765`. Comparar um com o outro recusava um login legítimo
+        com "origem cruzada recusada". Agora a comparação é com a lista de nomes
+        que o painel atende, declarada em `PAINEL_HOSTS`.
+        """
+        self.servidor.estado.cfg.painel_hosts = "dotcom.taile537f.ts.net"
+        codigo, _ = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "17"},
+            cabecalhos={"Origin": "https://dotcom.taile537f.ts.net"},
+            seguir=False,
+        )
+        self.assertEqual(codigo, 303)
+        self.assertEqual(env_io.ler(self.env)["TEMAS_LIMIAR"], "17")
+
+    def test_porta_diferente_no_origin_nao_reprova(self):
+        """Atrás de proxy a porta pública (443) não é a interna. Exigir porta igual
+        reintroduziria o defeito de cima."""
+        self.servidor.estado.cfg.painel_hosts = "painel.exemplo"
+        codigo, _ = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "19"},
+            cabecalhos={"Origin": "https://painel.exemplo"}, seguir=False,
+        )
+        self.assertEqual(codigo, 303)
+
+    def test_referer_serve_quando_nao_ha_origin(self):
+        codigo, _ = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "21"},
+            cabecalhos={"Referer": f"http://127.0.0.1:{self.servidor.server_port}/config"},
+            seguir=False,
+        )
+        self.assertEqual(codigo, 303)
+
+    def test_referer_de_outro_site_e_recusado(self):
+        codigo, corpo = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "23"},
+            cabecalhos={"Referer": "http://mau.exemplo/pagina"},
+        )
+        self.assertEqual(codigo, 403)
+        self.assertIn("origem cruzada", corpo)
+
     def test_origem_igual_ao_host_passa(self):
         codigo, _ = self.postar(
             "/config/salvar", {"TEMAS_LIMIAR": "13"},

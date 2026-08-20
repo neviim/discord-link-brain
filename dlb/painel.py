@@ -1346,25 +1346,39 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _origem_confiavel(self) -> bool:
-        """`Origin` (ou `Referer`) tem de bater com o `Host` que atendeu.
+        """`Origin` (ou `Referer`) tem de ser um nome que este painel atende.
 
-        Navegador manda `Origin` em todo POST de formulário cross-site, então esta
-        é a checagem que pega o caso real. Ausência de `Origin` é cliente que não é
-        navegador (curl), e aí o CSRF token — que ele não tem como adivinhar — é
-        quem barra.
+        A primeira versão comparava `Origin` com o `Host` **da própria
+        requisição**, e isso quebra na hora em que existe proxy na frente: o
+        navegador manda `Origin: https://dotcom.taile537f.ts.net` e o proxy
+        reescreve o `Host` para `127.0.0.1:8765`. Os dois deixam de bater, e o
+        painel recusava um login perfeitamente legítimo com "origem cruzada
+        recusada" — foi o que aconteceu de verdade.
+
+        Comparar com a **lista de nomes aceitos** (`hosts_aceitos`, que o operador
+        declara em `PAINEL_HOSTS`) resolve os dois lados: não depende de cabeçalho
+        que proxy reescreve, e continua recusando origem estranha.
+
+        Compara só o nome, sem porta: atrás de proxy a porta pública (443) não é a
+        interna. Isso deixa passar um POST vindo de outro serviço no **mesmo**
+        nome, em outra porta — e aí quem barra é o token de CSRF, que aquela
+        origem não consegue ler por causa da política de mesma origem.
+
+        Ausência de `Origin` e de `Referer` é cliente que não é navegador (curl),
+        e aí o CSRF token — que ele não tem como adivinhar — é quem barra.
         """
-        origem = self.headers.get("Origin") or ""
+        origem = self.headers.get("Origin") or self.headers.get("Referer") or ""
         if not origem:
-            referer = self.headers.get("Referer") or ""
-            if not referer:
-                return True
-            origem = referer
-        alvo = (self.headers.get("Host") or "").strip().lower()
+            return True
         try:
-            vinda = urlparse(origem).netloc.strip().lower()
+            nome = urlparse(origem).hostname or ""
         except ValueError:
             return False
-        return bool(alvo) and vinda == alvo
+        if not nome:
+            return False
+        return nome.strip().lower().rstrip(".") in self.estado.hosts_aceitos(
+            getattr(self.server, "server_address", ("", 0))[0]
+        )
 
     def _redirecionar(self, para: str) -> None:
         """303 depois de POST: recarregar a página não reenvia o formulário."""

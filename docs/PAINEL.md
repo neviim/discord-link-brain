@@ -232,9 +232,16 @@ serve. Fora de uma rede já criptografada, proxy com TLS na frente.
 
 ### A fronteira de mutação
 
-As três rotas que escrevem (`/config/salvar`, `/config/aplicar`, `/config/desfazer`)
-passam, nesta ordem, por: teto de 256 KB no corpo, checagem de `Origin`/`Referer`
-contra o `Host`, e token de CSRF comparado com `secrets.compare_digest`. O token é
+As rotas que escrevem passam, nesta ordem, por: teto de 256 KB no corpo, checagem
+de `Origin`/`Referer` **contra a lista de nomes aceitos**, e token de CSRF comparado
+com `secrets.compare_digest`.
+
+A comparação é com a lista, e não com o `Host` da própria requisição, por um motivo
+que apareceu no uso real: com proxy na frente — `tailscale serve`, nginx — o
+navegador manda `Origin: https://dotcom.taile537f.ts.net` e o proxy reescreve o
+`Host` para `127.0.0.1:8765`. Comparar um com o outro recusava login legítimo com
+"origem cruzada recusada". Só o nome é comparado, sem porta: atrás de proxy a porta
+pública não é a interna. O token é
 gerado por processo e vive no formulário — uma página de outro site não consegue
 lê-lo por causa da política de mesma origem. Depois do POST vem um 303, para
 recarregar a página não reenviar o formulário.
