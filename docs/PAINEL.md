@@ -175,6 +175,11 @@ avisa (commit `4ee85aa`). Enquanto houver diferença entre arquivo e container, 
 tela mostra a faixa "salvo, ainda não aplicado" com as chaves e os dois valores, e
 o botão de aplicar só fica ativo aí.
 
+**Chave que só o painel lê não entra nessa conta.** `PAINEL_TOKEN`,
+`PAINEL_HOSTS` e os dois tetos do chat são lidos pelo processo do painel, no host:
+valem ao **reiniciar o painel**, e o container não tem nada a ver com isso. Mostrá-las
+como pendentes mandaria recriar o container por uma configuração que ele não usa.
+
 **Aplicar dispara um ciclo na hora.** Com `DLB_RUN_ON_START=1` — o padrão — o
 container recém-criado roda `sync`, e junto o que estiver ligado: `backfill`,
 `sintese`, `ressurgir`. Isso gasta chamada de modelo, e o `ressurgir` **posta no

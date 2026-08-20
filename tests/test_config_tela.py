@@ -61,7 +61,7 @@ class TestContratoDoSchema(unittest.TestCase):
             with self.subTest(campo.chave):
                 self.assertIn(campo.tipo, painel_schema._VALIDADORES)
                 self.assertTrue(campo.rotulo)
-                self.assertIn(campo.onde_vale, {"python", "agendador"})
+                self.assertIn(campo.onde_vale, {"python", "agendador", "painel"})
 
     def test_escolha_sempre_tem_opcoes(self):
         for campo in CONFIG_SCHEMA:
@@ -374,6 +374,27 @@ class TestTelaDeConfig(PainelCase):
         _, html = self.postar("/config/salvar", {"TEMAS_LIMIAR": "9"})
         self.assertIn("Salvo em", html)
         self.assertNotIn("Salvo em", self.pegar("/config")[2])
+
+    def test_chave_que_so_o_painel_le_nao_vira_pendente(self):
+        """Apareceu configurando `PAINEL_TOKEN` de verdade: as chaves do painel
+        constavam como "salvo, não aplicado", o que mandaria recriar o container
+        por causa de uma configuração que ele não usa — e o painel só passaria a
+        usá-la ao reiniciar, não com o `up`."""
+        self.env.write_text(
+            "DISCORD_TOKEN=x\nPAINEL_TOKEN=segredo\nPAINEL_HOSTS=dotcom\n"
+            "PAINEL_CHAT_MAX_POR_HORA=5\n",
+            encoding="utf-8",
+        )
+        compose.inspecionar = lambda *a, **k: {
+            "container": "dlb-prod", "rodando": True, "status": "running", "saude": None,
+            "desde": None, "criado": None, "imagem": "x", "env": {},
+        }
+        pendentes = [p["chave"] for p in json.loads(self.pegar("/api/config")[2])["pendentes"]]
+        self.assertEqual([p for p in pendentes if p.startswith("PAINEL_")], [])
+
+    def test_a_tela_diz_que_chave_do_painel_vale_ao_reiniciar_o_painel(self):
+        _, _, html = self.pegar("/config")
+        self.assertIn("Vale ao reiniciar o painel", html)
 
     def test_avisa_que_aplicar_dispara_um_ciclo_na_hora(self):
         """Descoberto aplicando de verdade: com `DLB_RUN_ON_START=1` o container
