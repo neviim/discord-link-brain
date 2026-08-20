@@ -187,6 +187,9 @@ Discord**. O botão avisa, listando o que vai rodar, lido do ambiente do contain
 não do arquivo. Medido: três aplicares seguidos num teste mastigaram nove dias de
 histórico.
 
+O backup e o temporário estão no `.gitignore` — os dois carregam o `DISCORD_TOKEN`,
+e `.env` sozinho não cobre `.env.bak`. Há teste chamando `git check-ignore`.
+
 **Desfazer** volta o `.env` do backup, byte a byte. Um rollback que reformatasse o
 arquivo não seria rollback, seria uma terceira versão.
 

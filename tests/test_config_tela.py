@@ -97,6 +97,39 @@ class TestContratoDoSchema(unittest.TestCase):
                     self.assertEqual(valores.get(campo.chave, ""), "")
 
 
+class TestOsArquivosQueOPainelEscreveNaoVazam(unittest.TestCase):
+    """O backup do `.env` tem o `DISCORD_TOKEN`. Ele não pode ser commitável.
+
+    `.gitignore` tinha `.env` e só. `.env.bak` — que **este código** passou a criar
+    — aparecia como arquivo novo no `git status`, esperando um `git add -A`
+    distraído. O defeito nasceu com a feature, não estava no repo antes.
+    """
+
+    def ignorado(self, nome: str) -> bool:
+        import subprocess
+
+        raiz = Path(__file__).resolve().parent.parent
+        return (
+            subprocess.run(
+                ["git", "check-ignore", "-q", nome],
+                cwd=str(raiz),
+                capture_output=True,
+                check=False,
+            ).returncode
+            == 0
+        )
+
+    def test_o_env_e_os_arquivos_que_o_painel_deriva_dele_sao_ignorados(self):
+        for nome in (".env", ".env.bak", ".env.tmp"):
+            with self.subTest(nome):
+                self.assertTrue(self.ignorado(nome), f"{nome} não está no .gitignore")
+
+    def test_o_exemplo_continua_versionado(self):
+        """Ignorar `.env*` inteiro levaria o `.env.example` junto, e ele é o
+        contrato que o schema espelha."""
+        self.assertFalse(self.ignorado(".env.example"))
+
+
 class TestValidacao(unittest.TestCase):
     def validar(self, chave, valor):
         return POR_CHAVE[chave].validar(valor)

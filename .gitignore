@@ -1,4 +1,8 @@
 .env
+# O painel escreve estes ao salvar configuração, e os dois carregam o
+# DISCORD_TOKEN. `.env` sozinho não cobre `.env.bak`.
+.env.bak
+.env.tmp
 .state/
 __pycache__/
 *.pyc
