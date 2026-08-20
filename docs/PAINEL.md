@@ -175,6 +175,13 @@ avisa (commit `4ee85aa`). Enquanto houver diferença entre arquivo e container, 
 tela mostra a faixa "salvo, ainda não aplicado" com as chaves e os dois valores, e
 o botão de aplicar só fica ativo aí.
 
+**Aplicar dispara um ciclo na hora.** Com `DLB_RUN_ON_START=1` — o padrão — o
+container recém-criado roda `sync`, e junto o que estiver ligado: `backfill`,
+`sintese`, `ressurgir`. Isso gasta chamada de modelo, e o `ressurgir` **posta no
+Discord**. O botão avisa, listando o que vai rodar, lido do ambiente do container e
+não do arquivo. Medido: três aplicares seguidos num teste mastigaram nove dias de
+histórico.
+
 **Desfazer** volta o `.env` do backup, byte a byte. Um rollback que reformatasse o
 arquivo não seria rollback, seria uma terceira versão.
 
