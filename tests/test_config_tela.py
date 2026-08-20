@@ -570,6 +570,40 @@ class TestTelaDeConfig(PainelCase):
         self.assertEqual(codigo, 403)
         self.assertIn("origem cruzada", corpo)
 
+    def test_origem_opaca_nao_bloqueia_o_formulario(self):
+        """O defeito que o Dotcom levou na cara, e a causa era minha.
+
+        Eu mandava `Referrer-Policy: no-referrer` em toda resposta. O navegador
+        obedece: não manda `Referer` **e** serializa a origem como opaca, mandando
+        `Origin: null` no POST do formulário. O painel então recusava o próprio
+        formulário. Nenhum teste pegou porque teste manda os cabeçalhos que o teste
+        quer, não os que o navegador decide mandar.
+
+        `null` é ausência de informação, não hostilidade. Quem decide nesse caso é
+        o token de CSRF, que uma página de outra origem não consegue ler.
+        """
+        codigo, _ = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "27"},
+            cabecalhos={"Origin": "null"}, seguir=False,
+        )
+        self.assertEqual(codigo, 303)
+        self.assertEqual(env_io.ler(self.env)["TEMAS_LIMIAR"], "27")
+
+    def test_origem_opaca_ainda_precisa_do_csrf(self):
+        """Aceitar `null` não pode virar porta aberta: sem o token, 403."""
+        codigo, _ = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "29"},
+            cabecalhos={"Origin": "null"}, csrf=False,
+        )
+        self.assertEqual(codigo, 403)
+
+    def test_a_politica_de_referrer_nao_apaga_a_propria_origem(self):
+        """`no-referrer` é o que provoca `Origin: null`. `same-origin` mantém a
+        privacidade que interessa — nada vaza para terceiro — sem cegar o painel
+        sobre as requisições dele mesmo."""
+        _, cabecalhos, _ = self.pegar("/config")
+        self.assertEqual(cabecalhos["Referrer-Policy"], "same-origin")
+
     def test_a_recusa_diz_o_que_viu_e_o_que_aceita(self):
         """"origem cruzada recusada" sozinho custou uma ida e volta de adivinhação:
         sem o valor do `Origin` ninguém sabia se era proxy, nome diferente ou
