@@ -229,5 +229,87 @@ class TestInspecionar(unittest.TestCase):
         self.assertIsNone(compose.inspecionar())
 
 
+class TestAplicar(unittest.TestCase):
+    """`./dlb.sh prod up`, e o que acontece quando ele não pode rodar.
+
+    O painel chama o wrapper em vez de `docker compose` direto porque o compose
+    precisa de meia dúzia de caminhos do host exportados e falha alto sem eles —
+    reimplementar essa resolução aqui seria uma segunda chance de errar.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.raiz = Path(self._tmp.name)
+        (self.raiz / "dlb.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+        self.originais = {"which": shutil.which, "run": subprocess.run}
+        shutil.which = lambda _n: "/usr/bin/docker"
+
+    def tearDown(self):
+        shutil.which = self.originais["which"]
+        subprocess.run = self.originais["run"]
+        self._tmp.cleanup()
+
+    def test_sucesso_devolve_a_saida_do_comando(self):
+        subprocess.run = lambda *a, **k: subprocess.CompletedProcess(
+            a[0], 0, "Container dlb-prod Recreated\n", ""
+        )
+        resultado = compose.aplicar(self.raiz)
+        self.assertTrue(resultado["ok"])
+        self.assertIn("Recreated", resultado["saida"])
+        self.assertEqual(resultado["comando"], "./dlb.sh prod up")
+
+    def test_usa_up_e_nunca_restart(self):
+        """`restart` não relê o `.env`. Um botão que usasse restart não faria
+        efeito e não avisaria — é o defeito que o painel existe para não repetir."""
+        self.assertEqual(compose.COMANDO_APLICAR, ("./dlb.sh", "prod", "up"))
+        self.assertNotIn("restart", " ".join(compose.COMANDO_APLICAR))
+
+    def test_falha_do_comando_vem_com_codigo_e_saida(self):
+        subprocess.run = lambda *a, **k: subprocess.CompletedProcess(
+            a[0], 1, "", "erro: porta ocupada"
+        )
+        resultado = compose.aplicar(self.raiz)
+        self.assertFalse(resultado["ok"])
+        self.assertEqual(resultado["codigo"], 1)
+        self.assertIn("porta ocupada", resultado["saida"])
+
+    def test_saida_gigante_e_cortada_no_fim(self):
+        """A saída do compose é verbosa e o que interessa é o fim."""
+        subprocess.run = lambda *a, **k: subprocess.CompletedProcess(
+            a[0], 0, "\n".join(f"linha {i}" for i in range(200)), ""
+        )
+        saida = compose.aplicar(self.raiz)["saida"]
+        self.assertEqual(len(saida.splitlines()), 25)
+        self.assertIn("linha 199", saida)
+
+    def test_sem_o_wrapper_explica_em_vez_de_estourar(self):
+        (self.raiz / "dlb.sh").unlink()
+        resultado = compose.aplicar(self.raiz)
+        self.assertFalse(resultado["ok"])
+        self.assertIn("raiz do projeto", resultado["saida"])
+
+    def test_sem_docker_explica(self):
+        shutil.which = lambda _n: None
+        self.assertIn("PATH", compose.aplicar(self.raiz)["saida"])
+
+    def test_timeout_avisa_que_pode_ter_subido_de_qualquer_forma(self):
+        """Abandonar o `up` não desfaz o que ele já fez — e dizer o contrário
+        mandaria o Dotcom procurar problema onde não há."""
+        def estoura(*a, **k):
+            raise subprocess.TimeoutExpired("dlb.sh", 600)
+
+        subprocess.run = estoura
+        resultado = compose.aplicar(self.raiz, timeout=600)
+        self.assertFalse(resultado["ok"])
+        self.assertIn("pode ter subido", resultado["saida"])
+
+    def test_erro_de_execucao_nao_levanta(self):
+        def estoura(*a, **k):
+            raise OSError("permission denied")
+
+        subprocess.run = estoura
+        self.assertIn("permission denied", compose.aplicar(self.raiz)["saida"])
+
+
 if __name__ == "__main__":
     unittest.main()

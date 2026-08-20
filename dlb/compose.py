@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from pathlib import Path
 from typing import Mapping
 
 # Nome fixo no `docker-compose.yml` (`container_name: dlb-prod`), então não é
@@ -136,3 +137,70 @@ def ambiente_ativo(
     if inspecao and inspecao.get("rodando") and inspecao.get("env"):
         return dict(inspecao["env"]), "container"
     return dict(arquivo), "arquivo"
+
+
+# ------------------------------------------------------------------- aplicar
+
+
+# `./dlb.sh prod up` roda `docker compose --profile prod up -d --build`. O wrapper
+# existe porque o compose precisa de meia dúzia de caminhos do host exportados
+# (vault, binário do claude, UID) e falha alto sem eles — chamar `docker compose`
+# direto daqui seria reimplementar essa resolução, com uma segunda chance de errar.
+COMANDO_APLICAR = ("./dlb.sh", "prod", "up")
+
+# `up` recria o container e relê o `.env`; `restart` reaproveita o antigo e não relê
+# nada, sem erro nenhum (commit `4ee85aa`). O painel nunca usa `restart` — um botão
+# "salvar e reiniciar" não faria efeito e não avisaria.
+TIMEOUT_APLICAR_S = 600.0
+
+
+def aplicar(raiz: Path, timeout: float = TIMEOUT_APLICAR_S) -> dict:
+    """Recria o container para o `.env` novo valer. Nunca levanta.
+
+    Demora: o `up` do wrapper passa `--build`, então a primeira vez depois de
+    mexer no código reconstrói a imagem. Com cache, são segundos.
+    """
+    raiz = Path(raiz)
+    script = raiz / COMANDO_APLICAR[0]
+    if not script.is_file():
+        return {
+            "ok": False,
+            "codigo": None,
+            "saida": f"não achei {script} — o painel precisa rodar na raiz do projeto.",
+            "comando": " ".join(COMANDO_APLICAR),
+        }
+    if not disponivel():
+        return {
+            "ok": False,
+            "codigo": None,
+            "saida": "docker não está no PATH deste usuário.",
+            "comando": " ".join(COMANDO_APLICAR),
+        }
+    try:
+        saida = subprocess.run(
+            list(COMANDO_APLICAR),
+            cwd=str(raiz),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "codigo": None,
+            "saida": f"o `up` passou de {int(timeout)}s e foi abandonado. "
+            "O container pode ter subido de qualquer forma — confira o estado acima.",
+            "comando": " ".join(COMANDO_APLICAR),
+        }
+    except OSError as exc:
+        return {"ok": False, "codigo": None, "saida": str(exc), "comando": " ".join(COMANDO_APLICAR)}
+
+    texto = ((saida.stdout or "") + (saida.stderr or "")).strip()
+    return {
+        "ok": saida.returncode == 0,
+        "codigo": saida.returncode,
+        # A saída do compose é verbosa e o que interessa é o fim.
+        "saida": "\n".join(texto.splitlines()[-25:]),
+        "comando": " ".join(COMANDO_APLICAR),
+    }

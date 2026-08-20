@@ -395,12 +395,18 @@ class TestChatNaTela(PainelCase):
 
 
 class TestFronteira(PainelCase):
-    def test_metodo_que_escreve_e_405_enquanto_nao_existe_guarda(self):
-        for metodo in ("POST", "PUT", "DELETE", "PATCH"):
+    def test_metodos_que_o_painel_nao_tem_sao_405(self):
+        """`POST` existe em três rotas de configuração e em nenhuma outra. `PUT`,
+        `DELETE` e `PATCH` não existem em rota nenhuma — o painel não é API REST."""
+        for metodo in ("PUT", "DELETE", "PATCH"):
             with self.subTest(metodo):
                 codigo, cabecalhos, _ = self.pegar("/", metodo=metodo)
                 self.assertEqual(codigo, 405)
-                self.assertEqual(cabecalhos.get("Allow"), "GET, HEAD")
+                self.assertEqual(cabecalhos.get("Allow"), "GET, HEAD, POST")
+
+    def test_post_em_rota_de_leitura_e_405(self):
+        codigo, _, _ = self.pegar("/acervo", metodo="POST")
+        self.assertEqual(codigo, 405)
 
     def test_rota_inexistente_e_404_em_json(self):
         codigo, cabecalhos, corpo = self.pegar("/nao-existe")

@@ -15,14 +15,21 @@ Duas regras não óbvias, e as duas são **cópia deliberada** de `config.load_d
    e o `load_dotenv` fazem isso; um parser mais esperto aqui divergiria do que
    realmente chega ao processo.
 
-Este módulo é somente leitura de propósito. Escrever no `.env` — atômico, com
-backup e preservando comentário — é a fase de configuração, e vem com a validação
-que ela exige.
+A escrita preserva o arquivo inteiro: comentário, ordem, linha em branco. Um
+`.env` que perde os comentários perde a documentação que ele carrega, e ninguém
+percebe até precisar dela.
+
+**Uma regra de formato que não é óbvia:** o parser trata tudo depois do `=` como
+valor, então `CHAVE=1  # comentário` guarda `1  # comentário`. Comentário na mesma
+linha não existe neste formato, e a escrita nunca cria um — inclusive ao ativar uma
+linha sugerida como `# DLB_SYNC_AT=03:30   # HH:MM`, cujo comentário é descartado
+do valor.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -107,3 +114,133 @@ def duplicadas(caminho: Path) -> dict[str, list[int]]:
         if linha.e_atribuicao:
             onde.setdefault(linha.chave, []).append(linha.numero)
     return {chave: nums for chave, nums in onde.items() if len(nums) > 1}
+
+
+# --------------------------------------------------------------------- escrita
+
+
+@dataclass
+class Resultado:
+    """O que a escrita fez. A tela mostra, e o rollback usa."""
+
+    mudadas: dict[str, str] = field(default_factory=dict)
+    acrescentadas: tuple[str, ...] = ()
+    backup: Path | None = None
+    iguais: tuple[str, ...] = ()
+
+
+def _formatar(chave: str, valor: str) -> str:
+    """`CHAVE=valor`, com aspas só quando o espaço nas pontas importa.
+
+    O `load_dotenv` faz `.strip()` no valor, então espaço solto se perde de
+    qualquer jeito; aspas são a única forma de preservá-lo, e escrever aspas
+    sempre poluiria o arquivo à mão de quem edita direto.
+    """
+    if valor != valor.strip():
+        return f'{chave}="{valor}"'
+    return f"{chave}={valor}"
+
+
+def escrever(caminho: Path, valores: dict[str, str], backup: bool = True) -> Resultado:
+    """Aplica `valores` no `.env`, atômico, com backup.
+
+    Ordem das operações, e ela é a diferença entre um arquivo consistente e um
+    `.env` que trancou o Dotcom fora do próprio sistema:
+
+    1. lê o arquivo inteiro;
+    2. monta o texto novo **em memória**;
+    3. copia o original para `.env.bak` com modo `0600`;
+    4. escreve num temporário no mesmo diretório, também `0600`;
+    5. `os.replace`, que é atômico no mesmo sistema de arquivos.
+
+    Chave que já existe é substituída no lugar, preservando a posição e os
+    comentários em volta. Chave que só existe comentada ganha uma linha ativa
+    logo **depois** da sugestão — a documentação fica. Chave nova vai para o fim.
+    """
+    caminho = Path(caminho)
+    original = caminho.read_text(encoding="utf-8") if caminho.is_file() else ""
+    linhas_atuais = original.splitlines()
+    atuais = ler(caminho)
+
+    # Ausente e vazio contam como iguais, e isto não é detalhe: o formulário posta
+    # as 55 chaves de uma vez, a maioria em branco porque nunca foi configurada.
+    # Sem esta linha, salvar qualquer coisa acrescentaria cinquenta linhas
+    # `CHAVE=` ao `.env` do Dotcom, de uma vez.
+    #
+    # O que se perde: não dá para criar, pela tela, uma linha vazia de chave que
+    # ainda não existe no arquivo. O caso que **importa** — esvaziar
+    # `DLB_SYNC_EVERY_HOURS` para liberar o `DLB_SYNC_AT` — continua funcionando,
+    # porque essa chave já está lá com valor.
+    pendentes = dict(valores)
+    iguais = tuple(sorted(k for k, v in valores.items() if atuais.get(k, "") == v))
+    for k in iguais:
+        pendentes.pop(k, None)
+
+    saida: list[str] = []
+    ja_escritas: set[str] = set()
+    for linha in linhas_atuais:
+        limpa = linha.strip()
+        if limpa and not limpa.startswith("#") and "=" in limpa:
+            chave = limpa.partition("=")[0].strip()
+            if chave in pendentes and chave not in ja_escritas:
+                saida.append(_formatar(chave, pendentes[chave]))
+                ja_escritas.add(chave)
+                continue
+            if chave in ja_escritas:
+                # Chave repetida: a primeira é a que vale (`setdefault`), então a
+                # segunda é ruído que confunde. Sai junto com a atualização.
+                continue
+        saida.append(linha)
+        if limpa.startswith("#") and "=" in limpa:
+            sugerida = limpa.lstrip("#").strip().partition("=")[0].strip()
+            if sugerida in pendentes and sugerida not in ja_escritas:
+                saida.append(_formatar(sugerida, pendentes[sugerida]))
+                ja_escritas.add(sugerida)
+
+    novas = tuple(k for k in pendentes if k not in ja_escritas)
+    if novas:
+        if saida and saida[-1].strip():
+            saida.append("")
+        for chave in novas:
+            saida.append(_formatar(chave, pendentes[chave]))
+
+    texto = "\n".join(saida) + "\n"
+    resultado = Resultado(mudadas=dict(pendentes), acrescentadas=novas, iguais=iguais)
+
+    if not pendentes:
+        return resultado          # nada a fazer: não mexe no arquivo nem faz backup
+
+    if backup and caminho.is_file():
+        destino = caminho.with_suffix(caminho.suffix + ".bak")
+        destino.write_text(original, encoding="utf-8")
+        os.chmod(destino, 0o600)
+        resultado.backup = destino
+
+    temporario = caminho.with_suffix(caminho.suffix + ".tmp")
+    temporario.write_text(texto, encoding="utf-8")
+    os.chmod(temporario, 0o600)
+    os.replace(temporario, caminho)
+    return resultado
+
+
+def restaurar(caminho: Path) -> bool:
+    """Volta o `.env` para o backup, **byte a byte**. `False` se não há backup.
+
+    Byte a byte importa: um rollback que reformatasse o arquivo não seria
+    rollback, seria uma terceira versão.
+    """
+    caminho = Path(caminho)
+    origem = caminho.with_suffix(caminho.suffix + ".bak")
+    if not origem.is_file():
+        return False
+    dados = origem.read_bytes()
+    temporario = caminho.with_suffix(caminho.suffix + ".tmp")
+    temporario.write_bytes(dados)
+    os.chmod(temporario, 0o600)
+    os.replace(temporario, caminho)
+    return True
+
+
+def tem_backup(caminho: Path) -> Path | None:
+    destino = Path(caminho).with_suffix(Path(caminho).suffix + ".bak")
+    return destino if destino.is_file() else None

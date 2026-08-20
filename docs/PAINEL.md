@@ -11,7 +11,7 @@ python3 -m dlb painel --porta 9000
 Roda **no host**, não dentro do container. Precisa do `.env` do projeto (o mesmo
 que a CLI usa) e de acesso de leitura ao vault.
 
-## As cinco telas
+## As seis telas
 
 | Tela | Responde |
 |---|---|
@@ -20,6 +20,7 @@ que a CLI usa) e de acesso de leitura ao vault.
 | **Agenda** (`/agenda`) | Qual dos três modos está valendo, quando é o próximo disparo, e o que cada um dos quatro comandos do ciclo vai fazer. |
 | **Acervo** (`/acervo`) | As notas de `50_LINKS/`, com busca literal por título, resumo, domínio e conceito, e faceta por triagem. |
 | **Chat** (`/chat`) | Pergunta em linguagem natural sobre o acervo, respondida pelo mesmo código que `dlb buscar`. |
+| **Configuração** (`/config`) | As 55 chaves do `.env` em formulário, com validação, backup e o estado *salvo ≠ aplicado*. |
 
 Cada tela tem um JSON equivalente, para `curl` e para script:
 
@@ -152,12 +153,59 @@ de uso com `<img src="/chat?q=...">` — pedido que não manda `Origin` nenhum, 
 checar `Origin` não pegaria. Cliente sem o cabeçalho (curl, script) passa: a
 guarda é contra navegador, que é quem tem o problema.
 
-## Somente leitura
+## Configuração pela interface
 
-Nesta versão o painel **não muda nada no vault nem no `.env`**. Qualquer
-`POST`/`PUT`/`DELETE`/`PATCH` responde `405`. As duas únicas escritas são de
-contabilidade própria: `.state/runs/` (o run do próprio painel) e
-`.state/painel.json` (as chamadas de modelo do chat), ambos com escritor único. Botão só entra junto da fronteira de mutação (checagem de
+As 55 chaves configuráveis do `.env` em formulário, agrupadas como no arquivo.
+Uma tabela só (`dlb/painel_schema.py`) decide três coisas: o que é valor válido, que
+controle renderizar, e **onde a mudança vale**. Um teste de contrato afirma que toda
+chave do `.env.example` está no schema e vice-versa — é o par que pega a classe de
+defeito que já aconteceu aqui (chave duplicada com valores opostos) e que validação
+de tipo não pegaria, porque os dois valores eram válidos.
+
+### Salvar ≠ aplicar
+
+**Salvar** escreve no `.env`: valida tudo antes de escrever nada, faz backup em
+`.env.bak` (modo `0600`, porque o arquivo tem o token do Discord), escreve num
+temporário e troca com `os.replace`. Comentário, ordem e linha em branco são
+preservados; chave duplicada é removida.
+
+**Aplicar** roda `./dlb.sh prod up`, que recria o container. Não existe botão de
+`restart` aqui, e a ausência é a decisão: `restart` **não relê o `.env`** e não
+avisa (commit `4ee85aa`). Enquanto houver diferença entre arquivo e container, a
+tela mostra a faixa "salvo, ainda não aplicado" com as chaves e os dois valores, e
+o botão de aplicar só fica ativo aí.
+
+**Desfazer** volta o `.env` do backup, byte a byte. Um rollback que reformatasse o
+arquivo não seria rollback, seria uma terceira versão.
+
+### Segredo é write-only
+
+`DISCORD_TOKEN` e `ANTHROPIC_API_KEY` nunca voltam para a tela nem para
+`/api/config`: o campo aparece vazio, dizendo se há algo guardado. Deixar em branco
+mantém o valor; preencher substitui.
+
+### A fronteira de mutação
+
+As três rotas que escrevem (`/config/salvar`, `/config/aplicar`, `/config/desfazer`)
+passam, nesta ordem, por: teto de 256 KB no corpo, checagem de `Origin`/`Referer`
+contra o `Host`, e token de CSRF comparado com `secrets.compare_digest`. O token é
+gerado por processo e vive no formulário — uma página de outro site não consegue
+lê-lo por causa da política de mesma origem. Depois do POST vem um 303, para
+recarregar a página não reenviar o formulário.
+
+`PUT`, `DELETE` e `PATCH` não existem em rota nenhuma. `POST` em rota de leitura é
+405.
+
+### O que acontece se o `.env` estragar
+
+A tela abre. O leitor ignora linha que não parseia, a tela avisa o que encontrou de
+estranho (chave repetida, por exemplo) e o resto continua editável. Um painel que
+estourasse com `.env` inválido seria inútil exatamente quando é mais necessário.
+
+## O que o painel ainda não escreve
+
+O **vault** — nenhuma nota é criada ou editada pelo painel. Triagem pela interface
+e ações do chat são a fase seguinte. Botão só entra junto da fronteira de mutação (checagem de
 `Origin`, CSRF, token), e não antes — senão existiria uma janela com botão e sem
 guarda.
 

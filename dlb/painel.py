@@ -24,6 +24,7 @@ não antes, para não haver uma janela em que exista botão e não exista guarda
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import time
 from datetime import datetime, timezone
@@ -31,10 +32,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import agenda, chat as chat_mod, compose, env_io, gestor, journal
+from . import agenda, chat as chat_mod, compose, env_io, gestor, journal, painel_schema
 from .acervo import Acervo, filtrar, resumo
 from .config import Config
-from .render import Raw, juntar, pagina, substituir, tabela
+from .render import Raw, juntar, lista, pagina, substituir, tabela
 
 ESTATICOS = Path(__file__).parent / "static"
 
@@ -46,6 +47,11 @@ ARQUIVOS_ESTATICOS = {
 }
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+# Teto do corpo de um POST. O formulário de configuração inteiro, com as 55 chaves
+# preenchidas, não passa de alguns KB — 256 KB é folga de duas ordens de grandeza
+# e ainda impede que alguém prenda memória mandando um corpo infinito.
+CORPO_MAXIMO = 256 * 1024
 
 
 class Erro(RuntimeError):
@@ -97,6 +103,16 @@ class Estado:
         # O chat reusa o memo do acervo: perguntar não relê 77 arquivos se nada
         # mudou, e a resposta sai do mesmo dado que a tela do acervo mostra.
         self.chat = chat_mod.Chat(cfg, self.links)
+
+        # Token de CSRF por processo. Sem cookie e sem sessão: o token vai no
+        # formulário, e uma página de outro site não consegue lê-lo por causa da
+        # política de mesma origem. É o que impede um POST cego de fora — que é o
+        # modelo de ameaça real aqui (navegador hostil na mesma máquina), não DoS.
+        self.csrf = secrets.token_urlsafe(32)
+
+        # Resultado do último POST, mostrado no GET seguinte. POST-redirect-GET
+        # existe para F5 no navegador não reenviar o formulário ao recarregar.
+        self.ultimo_aviso: Raw = Raw("")
 
     # `ThreadingHTTPServer` atende em paralelo, e o memo do acervo é um dict
     # compartilhado. A leitura em si é barata; serializar evita duas threads
@@ -192,6 +208,41 @@ class Estado:
             "ultimas_execucoes": self.execucoes(limite=10),
             "ultimos": self.ultimos(),
             "lock": self.lock(),
+        }
+
+    def config(self) -> dict:
+        """A configuração como a tela precisa: valor atual, pendência e schema.
+
+        `pendentes` é a lista de chaves em que o `.env` já mudou e o container
+        ainda não sabe. É o estado de produto **salvo ≠ aplicado**, e ele não é
+        cosmético: `restart` não relê o `.env`, então sem esta lista o Dotcom teria
+        de adivinhar se o valor que ele digitou está valendo.
+        """
+        do_arquivo = env_io.ler(self.cfg.env_path)
+        inspecao = compose.inspecionar()
+        no_container = (inspecao or {}).get("env")
+        chaves = tuple(campo.chave for campo in painel_schema.CONFIG_SCHEMA)
+        pendentes = compose.divergencias(do_arquivo, no_container, chaves)
+
+        # Segredo é write-only, e isso vale para a API igual à tela: o valor sai
+        # do dicionário aqui, no único lugar que monta os dois. Redigir só na
+        # renderização deixaria `/api/config` vazando o token do Discord — foi o
+        # que o teste pegou.
+        visiveis = dict(do_arquivo)
+        preenchidos = {}
+        for campo in painel_schema.CONFIG_SCHEMA:
+            if campo.segredo:
+                preenchidos[campo.chave] = bool(visiveis.get(campo.chave))
+                visiveis.pop(campo.chave, None)
+
+        return {
+            "env_path": str(self.cfg.env_path),
+            "valores": visiveis,
+            "segredos_preenchidos": preenchidos,
+            "duplicadas": env_io.duplicadas(self.cfg.env_path),
+            "container": inspecao,
+            "pendentes": pendentes,
+            "tem_backup": bool(env_io.tem_backup(self.cfg.env_path)),
         }
 
     def com_alertas(self) -> dict:
@@ -637,6 +688,183 @@ por binário local — sem chave de API.</p>
     return pagina("Chat", corpo, ativo="/chat", vault=str(estado.cfg.vault_path))
 
 
+_CAMPO_TEXTO = """<label class=campo>
+  <span class=rotulo>$rotulo <code>$chave</code></span>
+  <input type="$html_tipo" name="$chave" value="$valor" placeholder="$placeholder">
+  <span class=ajuda>$ajuda</span>
+</label>"""
+
+_CAMPO_ESCOLHA = """<label class=campo>
+  <span class=rotulo>$rotulo <code>$chave</code></span>
+  <select name="$chave">$opcoes</select>
+  <span class=ajuda>$ajuda</span>
+</label>"""
+
+
+def _placeholder(campo, guardado: bool) -> str:
+    if not campo.segredo:
+        return ""
+    return "(guardado — deixe em branco para manter)" if guardado else "(vazio)"
+
+
+def _campo_html(campo, valor: str, pendente: bool, guardado: bool = False) -> Raw:
+    """Um controle por chave. Segredo nunca volta preenchido."""
+    ajuda = campo.ajuda
+    if campo.onde_vale == "agendador":
+        ajuda = (ajuda + " " if ajuda else "") + "Só vale depois de aplicar (recriar o container)."
+    if pendente:
+        ajuda = (ajuda + " " if ajuda else "") + "⚠ salvo no .env, ainda não aplicado."
+
+    if campo.tipo == "escolha" or campo.tipo == "booleano":
+        opcoes = ("0", "1") if campo.tipo == "booleano" else campo.opcoes
+        rotulos = {"0": "0 — desligado", "1": "1 — ligado"} if campo.tipo == "booleano" else {}
+        return substituir(
+            _CAMPO_ESCOLHA,
+            rotulo=campo.rotulo,
+            chave=campo.chave,
+            ajuda=ajuda,
+            opcoes=juntar(
+                [
+                    substituir(
+                        '<option value="$v"$sel>$rotulo</option>',
+                        v=o,
+                        sel=Raw(" selected") if o == valor else "",
+                        rotulo=rotulos.get(o, o),
+                    )
+                    for o in opcoes
+                ],
+                "",
+            ),
+        )
+    return substituir(
+        _CAMPO_TEXTO,
+        rotulo=campo.rotulo,
+        chave=campo.chave,
+        ajuda=ajuda,
+        html_tipo="password" if campo.segredo else ("number" if campo.tipo == "numero" else "text"),
+        valor="" if campo.segredo else valor,
+        placeholder=_placeholder(campo, guardado),
+    )
+
+
+def _view_config(estado: Estado, aviso: Raw = Raw(""), erros: tuple = ()) -> str:
+    dados = estado.config()
+    valores = dados["valores"]
+    pendentes = {d["chave"] for d in dados["pendentes"]}
+
+    grupos = []
+    for grupo in painel_schema.GRUPOS:
+        campos = [c for c in painel_schema.CONFIG_SCHEMA if c.grupo == grupo]
+        grupos.append(
+            substituir(
+                "<fieldset><legend>$grupo</legend>$campos</fieldset>",
+                grupo=grupo,
+                campos=juntar(
+                    [
+                        _campo_html(
+                            c,
+                            valores.get(c.chave, ""),
+                            c.chave in pendentes,
+                            dados["segredos_preenchidos"].get(c.chave, False),
+                        )
+                        for c in campos
+                    ],
+                    "",
+                ),
+            )
+        )
+
+    faixa_pendente = (
+        Raw("")
+        if not dados["pendentes"]
+        else substituir(
+            """<article class='faixa faixa-atencao'>
+  <h3>Salvo, ainda não aplicado</h3>
+  <p class=evidencia>$quais</p>
+  <p class=acao>Aplicar recria o container com <code>./dlb.sh prod up</code>.
+  <code>restart</code> não relê o `.env` — por isso não existe esse botão aqui.</p>
+</article>""",
+            quais=", ".join(
+                d["chave"]
+                if painel_schema.POR_CHAVE[d["chave"]].segredo
+                else f"{d['chave']}: arquivo {d['arquivo'] or '(vazio)'} × container {d['container'] or '(vazio)'}"
+                for d in dados["pendentes"]
+            ),
+        )
+    )
+
+    faixa_erros = (
+        Raw("")
+        if not erros
+        else substituir(
+            "<article class='faixa faixa-alerta'><h3>Nada foi salvo</h3>$lista</article>",
+            lista=lista(erros),
+        )
+    )
+
+    faixa_dup = (
+        Raw("")
+        if not dados["duplicadas"]
+        else substituir(
+            "<article class='faixa faixa-alerta'><p>Chave repetida no arquivo: $quais. "
+            "A primeira ocorrência é a que vale; salvar aqui remove a duplicata.</p></article>",
+            quais=", ".join(
+                f"{k} (linhas {', '.join(map(str, v))})" for k, v in dados["duplicadas"].items()
+            ),
+        )
+    )
+
+    desfazer = (
+        Raw("")
+        if not dados["tem_backup"]
+        else substituir(
+            """<form method=post action="/config/desfazer" class=acoes>
+  <input type=hidden name=csrf value="$csrf">
+  <button type=submit class=secundario>desfazer (volta o .env do backup)</button>
+</form>""",
+            csrf=estado.csrf,
+        )
+    )
+
+    corpo = substituir(
+        """<h1>Configuração</h1>
+<p class=detalhe>Escrevendo em <code>$env_path</code>. O arquivo é a intenção; o
+container é o que está valendo. Segredo é write-only: some da tela e não volta.</p>
+$aviso
+$faixa_erros
+$faixa_dup
+$faixa_pendente
+<form method=post action="/config/salvar">
+  <input type=hidden name=csrf value="$csrf">
+  $grupos
+  <div class=acoes>
+    <button type=submit>salvar no .env</button>
+  </div>
+</form>
+<form method=post action="/config/aplicar" class=acoes>
+  <input type=hidden name=csrf value="$csrf">
+  <button type=submit $desabilitado>aplicar (recria o container)</button>
+  <span class=ajuda>$quantas</span>
+</form>
+$desfazer""",
+        env_path=dados["env_path"],
+        aviso=aviso,
+        faixa_erros=faixa_erros,
+        faixa_dup=faixa_dup,
+        faixa_pendente=faixa_pendente,
+        csrf=estado.csrf,
+        grupos=juntar(grupos, ""),
+        desabilitado=Raw("") if dados["pendentes"] else Raw("disabled"),
+        quantas=(
+            f"{len(dados['pendentes'])} chave(s) esperando"
+            if dados["pendentes"]
+            else "nada pendente"
+        ),
+        desfazer=desfazer,
+    )
+    return pagina("Configuração", corpo, ativo="/config", vault=str(estado.cfg.vault_path))
+
+
 def _view_acervo(estado: Estado, consulta: dict) -> str:
     def um(nome: str) -> str:
         return (consulta.get(nome) or [""])[0].strip()
@@ -732,12 +960,158 @@ class Handler(BaseHTTPRequestHandler):
     def _metodo_nao_permitido(self) -> None:
         self._responder(
             405,
-            b'{"erro":"somente leitura nesta versao do painel"}',
+            b'{"erro":"metodo nao suportado neste painel"}',
             "application/json; charset=utf-8",
-            extras={"Allow": "GET, HEAD"},
+            extras={"Allow": "GET, HEAD, POST"},
         )
 
-    do_POST = do_PUT = do_DELETE = do_PATCH = _metodo_nao_permitido
+    do_PUT = do_DELETE = do_PATCH = _metodo_nao_permitido
+
+    # ------------------------------------------------------------- mutação
+
+    def do_POST(self) -> None:
+        """As três únicas rotas que escrevem. Fronteira antes de qualquer efeito.
+
+        A ordem importa: limite de corpo, origem, CSRF, e só então a ação. Validar
+        depois de ler um corpo sem teto já teria deixado alguém prender memória.
+        """
+        rota = urlparse(self.path).path.rstrip("/") or "/"
+        if rota not in {"/config/salvar", "/config/aplicar", "/config/desfazer"}:
+            self._metodo_nao_permitido()
+            return
+        try:
+            corpo = self._ler_corpo()
+        except ValueError as exc:
+            self._json({"erro": str(exc)}, True, codigo=413)
+            return
+        if not self._origem_confiavel():
+            self._json({"erro": "origem cruzada recusada"}, True, codigo=403)
+            return
+        campos = {k: v[0] if v else "" for k, v in parse_qs(corpo, keep_blank_values=True).items()}
+        if not secrets.compare_digest(campos.get("csrf", ""), self.estado.csrf):
+            self._json({"erro": "token de formulário inválido — recarregue a página"}, True, codigo=403)
+            return
+        campos.pop("csrf", None)
+        try:
+            if rota == "/config/salvar":
+                self._salvar(campos)
+            elif rota == "/config/aplicar":
+                self._aplicar()
+            else:
+                self._desfazer()
+        except Exception as exc:  # noqa: BLE001
+            self.log_message("erro em %s: %s: %s", rota, type(exc).__name__, exc)
+            self.estado.ultimo_aviso = substituir(
+                "<article class='faixa faixa-alerta'><h3>Falhou</h3><p>$erro</p></article>",
+                erro=f"{type(exc).__name__}: {exc}",
+            )
+        self._redirecionar("/config")
+
+    def _ler_corpo(self) -> str:
+        tamanho = self.headers.get("Content-Length")
+        try:
+            n = int(tamanho or 0)
+        except ValueError:
+            raise ValueError("Content-Length inválido") from None
+        if n > CORPO_MAXIMO:
+            raise ValueError(f"corpo de {n} bytes passa do teto de {CORPO_MAXIMO}")
+        return self.rfile.read(n).decode("utf-8", errors="replace")
+
+    def _origem_confiavel(self) -> bool:
+        """`Origin` (ou `Referer`) tem de bater com o `Host` que atendeu.
+
+        Navegador manda `Origin` em todo POST de formulário cross-site, então esta
+        é a checagem que pega o caso real. Ausência de `Origin` é cliente que não é
+        navegador (curl), e aí o CSRF token — que ele não tem como adivinhar — é
+        quem barra.
+        """
+        origem = self.headers.get("Origin") or ""
+        if not origem:
+            referer = self.headers.get("Referer") or ""
+            if not referer:
+                return True
+            origem = referer
+        alvo = (self.headers.get("Host") or "").strip().lower()
+        try:
+            vinda = urlparse(origem).netloc.strip().lower()
+        except ValueError:
+            return False
+        return bool(alvo) and vinda == alvo
+
+    def _redirecionar(self, para: str) -> None:
+        """303 depois de POST: recarregar a página não reenvia o formulário."""
+        self.send_response(303)
+        self.send_header("Location", para)
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def _salvar(self, campos: dict) -> None:
+        estado = self.estado
+        # Segredo em branco significa "mantenha o que está lá" — write-only. Sem
+        # isto, abrir a tela e salvar apagaria o DISCORD_TOKEN.
+        for campo in painel_schema.CONFIG_SCHEMA:
+            if campo.segredo and not (campos.get(campo.chave) or "").strip():
+                campos.pop(campo.chave, None)
+
+        limpos, erros = painel_schema.validar_tudo(campos)
+        if erros:
+            # Nada é escrito: aplicar metade de um formulário deixaria o `.env`
+            # num estado que ninguém pediu.
+            estado.ultimo_aviso = substituir(
+                "<article class='faixa faixa-alerta'><h3>Nada foi salvo</h3>$lista</article>",
+                lista=lista(erros),
+            )
+            return
+        resultado = env_io.escrever(estado.cfg.env_path, limpos)
+        if not resultado.mudadas:
+            estado.ultimo_aviso = Raw(
+                "<article class='faixa faixa-info'><p>Nada mudou — os valores já eram esses.</p></article>"
+            )
+            return
+        estado.ultimo_aviso = substituir(
+            """<article class='faixa faixa-info'>
+  <h3>Salvo em $arquivo</h3>
+  <p class=evidencia>$quais</p>
+  <p class=acao>Backup em $backup. Para o container passar a usar, clique em aplicar.</p>
+</article>""",
+            arquivo=str(estado.cfg.env_path),
+            quais=", ".join(sorted(resultado.mudadas)),
+            backup=str(resultado.backup) if resultado.backup else "(não havia arquivo antes)",
+        )
+
+    def _aplicar(self) -> None:
+        estado = self.estado
+        # Recriar o container é job: entra no histórico como qualquer outro, para
+        # "por que o painel ficou fora do ar às 3h" ter resposta.
+        with journal.registrar(estado.cfg.state_dir, "aplicar", ["config", "aplicar"]) as run:
+            resultado = compose.aplicar(estado.cfg.env_path.parent)
+            run.contar("ok" if resultado["ok"] else "falha")
+            run.fechar(exit_code=0 if resultado["ok"] else 1, erro=None if resultado["ok"] else resultado["saida"][:300])
+        estado.ultimo_aviso = substituir(
+            """<article class='faixa faixa-$tom'>
+  <h3>$titulo</h3>
+  <p class=evidencia><code>$comando</code> → código $codigo</p>
+  <pre class=saida>$saida</pre>
+</article>""",
+            tom="info" if resultado["ok"] else "alerta",
+            titulo="Container recriado com o .env atual" if resultado["ok"] else "O aplicar falhou",
+            comando=resultado["comando"],
+            codigo="—" if resultado["codigo"] is None else resultado["codigo"],
+            saida=resultado["saida"] or "(sem saída)",
+        )
+
+    def _desfazer(self) -> None:
+        estado = self.estado
+        voltou = env_io.restaurar(estado.cfg.env_path)
+        estado.ultimo_aviso = Raw(
+            "<article class='faixa faixa-info'><p>O <code>.env</code> voltou ao backup, "
+            "byte a byte. O container segue com o que tinha até você aplicar.</p></article>"
+        )
+        if not voltou:
+            estado.ultimo_aviso = Raw(
+                "<article class='faixa faixa-alerta'><p>Não havia backup para voltar.</p></article>"
+            )
 
     def _despachar(self, corpo: bool) -> None:
         alvo = urlparse(self.path)
@@ -749,6 +1123,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._html(_view_execucoes(self.estado, consulta), corpo)
             elif rota == "/agenda":
                 self._html(_view_agenda(self.estado), corpo)
+            elif rota == "/config":
+                aviso, self.estado.ultimo_aviso = self.estado.ultimo_aviso, Raw("")
+                self._html(_view_config(self.estado, aviso=aviso), corpo)
+            elif rota == "/api/config":
+                self._json(self.estado.config(), corpo)
             elif rota == "/chat":
                 self._chat(consulta, corpo, html=True)
             elif rota == "/acervo":
