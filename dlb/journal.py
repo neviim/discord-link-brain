@@ -62,6 +62,16 @@ MANTER_RUNS = 500
 # `migrar` também fica: é offline, manual, e escreve nota idempotente.
 LOCK_DE_COMANDO = {"sync": "canais", "backfill": "canais"}
 
+# Comandos que ficam de pé por desenho, em vez de terminar. O journal os marca
+# para a tela não confundir "de pé desde ontem" com "job pendurado há 14 horas".
+#
+# A distinção nasceu de um caso concreto: matar o painel com SIGTERM deixa o
+# `summary.json` aberto para sempre, porque sinal não é exceção e o `registrar`
+# não o vê. Para `sync` isso é anomalia e a regra `run_pendurado` do gestor
+# levanta alerta; para o painel é o normal, e alertar seria o painel reclamando
+# de si mesmo.
+LONGEVOS = {"painel", "responder"}
+
 
 def _agora() -> datetime:
     return datetime.now(timezone.utc)
@@ -117,6 +127,7 @@ class Run:
             "argv": self.argv,
             "pid": os.getpid(),
             "status": status,
+            "longevo": self.comando in LONGEVOS,
             "inicio": self.inicio.isoformat(timespec="seconds"),
             "fim": fim.isoformat(timespec="seconds") if fim else None,
             "duracao_s": None if fim is None else round(time.monotonic() - self._t0, 3),

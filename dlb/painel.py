@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import agenda, compose, env_io, gestor, journal
+from . import agenda, chat as chat_mod, compose, env_io, gestor, journal
 from .acervo import Acervo, filtrar, resumo
 from .config import Config
 from .render import Raw, juntar, pagina, substituir, tabela
@@ -94,6 +94,9 @@ class Estado:
         self.cfg = cfg
         self.acervo = Acervo(cfg.vault_path)
         self._trava = threading.Lock()
+        # O chat reusa o memo do acervo: perguntar não relê 77 arquivos se nada
+        # mudou, e a resposta sai do mesmo dado que a tela do acervo mostra.
+        self.chat = chat_mod.Chat(cfg, self.links)
 
     # `ThreadingHTTPServer` atende em paralelo, e o memo do acervo é um dict
     # compartilhado. A leitura em si é barata; serializar evita duas threads
@@ -272,10 +275,16 @@ def _tom_heartbeat(idade: float | None, tolerancia: int) -> str:
 def _linha_execucao(dados: dict) -> list[object]:
     contadores = dados.get("contadores") or {}
     resumo_contadores = ", ".join(f"{k}: {v}" for k, v in contadores.items()) or "—"
+    # Processo que fica de pé por desenho não é job em andamento. Mostrar
+    # "rodando" para o painel faria a tela parecer ter um sync travado desde
+    # ontem — e é o próprio painel.
+    estado = dados.get("status") or "?"
+    if estado == "rodando" and dados.get("longevo"):
+        estado = "de pé"
     return [
         (dados.get("inicio") or "")[:19].replace("T", " "),
         dados.get("comando") or "?",
-        _selo(dados.get("status") or "?"),
+        _selo(estado),
         "—" if dados.get("duracao_s") is None else f"{dados['duracao_s']:.1f} s",
         resumo_contadores,
         dados.get("erro") or "",
@@ -551,6 +560,83 @@ $divergencias""",
     return pagina("Agenda", corpo, ativo="/agenda", vault=str(estado.cfg.vault_path))
 
 
+_CHAT_ITEM = """<article class="troca $classe">
+  <p class=pergunta>$pergunta</p>
+  <p class=resposta>$texto</p>
+  <p class=detalhe>$rodape</p>
+  $usados
+</article>"""
+
+
+def _troca(registro: dict) -> Raw:
+    """Uma pergunta e sua resposta. Os links vêm do acervo, nunca do modelo."""
+    usados = registro.get("usados") or []
+    lista_usados = (
+        Raw("")
+        if not usados
+        else Raw(
+            "<ul class=usados>"
+            + str(
+                juntar(
+                    [
+                        substituir(
+                            '<li><a href="$url" rel="noreferrer noopener">$titulo</a> '
+                            "<span class=detalhe>· $dia</span></li>",
+                            url=u.get("url"),
+                            titulo=u.get("titulo") or u.get("nome"),
+                            dia=u.get("dia"),
+                        )
+                        for u in usados
+                    ],
+                    "",
+                )
+            )
+            + "</ul>"
+        )
+    )
+    erro = registro.get("erro")
+    rodape = (
+        f"confiança {registro.get('confianca')} · {registro.get('considerados')} item(ns) "
+        f"considerados · {registro.get('duracao_s')}s"
+        + (f" · esperou {registro['esperou_s']}s na fila" if registro.get("esperou_s") else "")
+        + (" · prompt truncado pelo orçamento" if registro.get("truncado") else "")
+    )
+    return substituir(
+        _CHAT_ITEM,
+        classe="troca-erro" if erro else "",
+        pergunta=registro.get("pergunta"),
+        texto=erro or registro.get("texto") or "(resposta vazia)",
+        rodape="não chamou o modelo" if erro else rodape,
+        usados=lista_usados,
+    )
+
+
+def _view_chat(estado: Estado, consulta: dict, pergunta: str = "") -> str:
+    situacao = estado.chat.situacao()
+    corpo = substituir(
+        """<h1>Chat sobre o acervo</h1>
+<p class=detalhe>A mesma função que <code>dlb buscar</code> usa, com o mesmo acervo:
+a resposta aqui e no terminal são a mesma. O modelo é <code>$backend</code>, rodando
+por binário local — sem chave de API.</p>
+<form method=get action="/chat" class=busca>
+  <input type=search name=q value="$pergunta" placeholder="o que você quer saber do que já passou por você?" autofocus>
+  <button type=submit>perguntar</button>
+</form>
+<p class=detalhe>$situacao</p>
+<section class=trocas>$trocas</section>""",
+        backend=situacao["backend"],
+        pergunta=pergunta,
+        situacao=(
+            f"{situacao['chamadas_na_hora']} de {situacao['teto_por_hora']} chamadas na última hora"
+            + (" · uma pergunta rodando agora" if situacao["ocupado"] else "")
+            + " · uma chamada de modelo por vez no painel inteiro"
+        ),
+        trocas=juntar([_troca(r.como_dict()) for r in estado.chat.historico], "")
+        or Raw("<p class=vazio>Nenhuma pergunta ainda nesta sessão do painel.</p>"),
+    )
+    return pagina("Chat", corpo, ativo="/chat", vault=str(estado.cfg.vault_path))
+
+
 def _view_acervo(estado: Estado, consulta: dict) -> str:
     def um(nome: str) -> str:
         return (consulta.get(nome) or [""])[0].strip()
@@ -663,6 +749,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._html(_view_execucoes(self.estado, consulta), corpo)
             elif rota == "/agenda":
                 self._html(_view_agenda(self.estado), corpo)
+            elif rota == "/chat":
+                self._chat(consulta, corpo, html=True)
             elif rota == "/acervo":
                 self._html(_view_acervo(self.estado, consulta), corpo)
             elif rota == "/api/estado":
@@ -674,6 +762,8 @@ class Handler(BaseHTTPRequestHandler):
                 )
             elif rota == "/api/agenda":
                 self._json(self.estado.agenda(), corpo)
+            elif rota == "/api/chat":
+                self._chat(consulta, corpo, html=False)
             elif rota == "/api/acervo":
                 self._api_acervo(consulta, corpo)
             elif rota.startswith("/static/"):
@@ -687,6 +777,41 @@ class Handler(BaseHTTPRequestHandler):
             # justamente o que se abre quando algo já está errado.
             self.log_message("erro em %s: %s: %s", rota, type(exc).__name__, exc)
             self._json({"erro": f"{type(exc).__name__}: {exc}"}, corpo, codigo=500)
+
+    def _chat(self, consulta: dict, corpo: bool, html: bool) -> None:
+        """A única rota que gasta modelo. Recusa requisição vinda de outro site.
+
+        `Sec-Fetch-Site` é enviado pelo navegador e diz de onde a requisição
+        partiu. Sem esta guarda, uma página hostil aberta na mesma máquina
+        poderia queimar a janela de uso com `<img src="/chat?q=...">` — pedido que
+        não manda `Origin` nenhum, então checar `Origin` não pegaria. Cliente que
+        não manda o cabeçalho (curl, script) passa: a guarda é contra navegador,
+        que é quem tem o problema.
+        """
+        origem = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if origem and origem not in {"same-origin", "none"}:
+            self._json(
+                {"erro": "requisição de outro site não pode gastar modelo", "sec_fetch_site": origem},
+                corpo,
+                codigo=403,
+            )
+            return
+
+        pergunta = (consulta.get("q") or [""])[0].strip()
+        if pergunta:
+            registro = self.estado.chat.perguntar(pergunta)
+        else:
+            registro = None
+        if html:
+            self._html(_view_chat(self.estado, consulta, pergunta), corpo)
+            return
+        self._json(
+            {
+                "situacao": self.estado.chat.situacao(),
+                "resposta": registro.como_dict() if registro else None,
+            },
+            corpo,
+        )
 
     def _api_acervo(self, consulta: dict, corpo: bool) -> None:
         def um(nome: str) -> str:

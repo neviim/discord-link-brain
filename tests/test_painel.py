@@ -27,7 +27,7 @@ from pathlib import Path
 
 from dlb.config import Config
 from dlb.painel import Erro, construir
-from dlb import compose, journal
+from dlb import busca, compose, journal
 
 from tests.test_vault import VaultCase, note
 
@@ -70,8 +70,10 @@ class PainelCase(VaultCase):
     def escrever(self, url, titulo, conceitos=(), hhmm="09:12"):
         return self.vault.write_link_note("estudos", note(url, titulo, list(conceitos), hhmm))
 
-    def pegar(self, rota, metodo="GET"):
-        pedido = urllib.request.Request(self.base + rota, method=metodo)
+    def pegar(self, rota, metodo="GET", cabecalhos=None):
+        pedido = urllib.request.Request(
+            self.base + rota, method=metodo, headers=cabecalhos or {}
+        )
         try:
             with urllib.request.urlopen(pedido, timeout=10) as resposta:
                 return resposta.status, dict(resposta.headers), resposta.read().decode("utf-8")
@@ -112,6 +114,13 @@ class TestTelas(PainelCase):
         self.assertIn("links_novos: 3", html)
         self.assertIn("selo-ok", html)
         self.assertIn("selo-falha", html)
+
+    def test_processo_longevo_aparece_como_de_pe_e_nao_como_rodando(self):
+        """Senão a tela mostraria o próprio painel como job travado desde ontem."""
+        journal.abrir(self.state, "painel", ["painel"])
+        _, _, html = self.pegar("/execucoes")
+        self.assertIn("de pé", html)
+        self.assertNotIn("selo-rodando", html)
 
     def test_filtro_por_comando_nas_execucoes(self):
         with journal.registrar(self.state, "sintese", []) as run:
@@ -303,6 +312,86 @@ class TestAgendaNaTela(PainelCase):
         codigo, _, html = self.pegar("/agenda")
         self.assertEqual(codigo, 200)
         self.assertIn("padrão", html)
+
+
+class TestChatNaTela(PainelCase):
+    """O chat pelo HTTP. O modelo é dublê — nenhum teste abre subprocess."""
+
+    def setUp(self):
+        super().setUp()
+        self.perguntas = []
+        self._buscar = busca.buscar
+
+        def falso(cfg, pergunta, entradas):
+            self.perguntas.append(pergunta)
+            return busca.Resposta(
+                texto=f"eco: {pergunta}", confianca="alta", considerados=len(entradas)
+            )
+
+        busca.buscar = falso
+
+    def tearDown(self):
+        busca.buscar = self._buscar
+        super().tearDown()
+
+    def test_abre_vazio_sem_chamar_o_modelo(self):
+        """Entrar na tela não pode gastar quota — só perguntar gasta."""
+        codigo, _, html = self.pegar("/chat")
+        self.assertEqual(codigo, 200)
+        self.assertIn("Nenhuma pergunta ainda", html)
+        self.assertEqual(self.perguntas, [])
+
+    def test_pergunta_pela_url_responde_e_mostra_o_consumo(self):
+        _, _, html = self.pegar("/chat?q=o+que+eu+sei+de+nostr")
+        self.assertIn("eco: o que eu sei de nostr", html)
+        self.assertIn("1 de 20 chamadas na última hora", html)
+        self.assertEqual(self.perguntas, ["o que eu sei de nostr"])
+
+    def test_resposta_hostil_do_modelo_sai_escapada(self):
+        """O texto vem de LLM. Não é confiável, e vai para dentro de `<p>`."""
+        busca.buscar = lambda cfg, p, e: busca.Resposta(
+            texto="<script>alert(1)</script>", confianca="alta"
+        )
+        _, _, html = self.pegar("/chat?q=x")
+        self.assertNotIn("<script>alert", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_api_chat_devolve_o_registro_e_a_situacao(self):
+        dados = self.json_de("/api/chat?q=nostr")
+        self.assertEqual(dados["resposta"]["texto"], "eco: nostr")
+        self.assertTrue(dados["resposta"]["chamou_modelo"])
+        self.assertEqual(dados["situacao"]["chamadas_na_hora"], 1)
+
+    def test_api_chat_sem_pergunta_nao_chama_o_modelo(self):
+        dados = self.json_de("/api/chat")
+        self.assertIsNone(dados["resposta"])
+        self.assertEqual(self.perguntas, [])
+
+    def test_requisicao_de_outro_site_nao_gasta_modelo(self):
+        """Sem esta guarda, uma página hostil aberta na mesma máquina queimaria a
+        janela de uso com `<img src="/chat?q=...">` — pedido que não manda
+        `Origin` nenhum, então checar `Origin` não pegaria."""
+        codigo, _, corpo = self.pegar(
+            "/chat?q=queimar+quota", cabecalhos={"Sec-Fetch-Site": "cross-site"}
+        )
+        self.assertEqual(codigo, 403)
+        self.assertIn("outro site", corpo)
+        self.assertEqual(self.perguntas, [])
+
+    def test_navegacao_normal_e_curl_passam(self):
+        """`same-origin` é a aba do próprio painel; ausente é curl ou script.
+        A guarda é contra navegador, que é quem tem o problema."""
+        for cabecalhos in ({"Sec-Fetch-Site": "same-origin"}, {"Sec-Fetch-Site": "none"}, {}):
+            with self.subTest(cabecalhos=cabecalhos):
+                codigo, _, _ = self.pegar("/chat?q=ok", cabecalhos=cabecalhos)
+                self.assertEqual(codigo, 200)
+        self.assertEqual(len(self.perguntas), 3)
+
+    def test_as_outras_telas_nao_tem_a_guarda(self):
+        """Ler o painel de um iframe hostil é chato, não caro. A guarda protege
+        quota, e pôr onde não custa nada só criaria falso positivo."""
+        codigo, _, _ = self.pegar("/acervo", cabecalhos={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(codigo, 200)
 
 
 class TestFronteira(PainelCase):

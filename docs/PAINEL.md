@@ -11,7 +11,7 @@ python3 -m dlb painel --porta 9000
 Roda **no host**, não dentro do container. Precisa do `.env` do projeto (o mesmo
 que a CLI usa) e de acesso de leitura ao vault.
 
-## As quatro telas
+## As cinco telas
 
 | Tela | Responde |
 |---|---|
@@ -19,6 +19,7 @@ que a CLI usa) e de acesso de leitura ao vault.
 | **Execuções** (`/execucoes`) | Uma linha por run, do mais recente para o mais antigo, com status, duração, contadores e erro. Filtra por comando. |
 | **Agenda** (`/agenda`) | Qual dos três modos está valendo, quando é o próximo disparo, e o que cada um dos quatro comandos do ciclo vai fazer. |
 | **Acervo** (`/acervo`) | As notas de `50_LINKS/`, com busca literal por título, resumo, domínio e conceito, e faceta por triagem. |
+| **Chat** (`/chat`) | Pergunta em linguagem natural sobre o acervo, respondida pelo mesmo código que `dlb buscar`. |
 
 Cada tela tem um JSON equivalente, para `curl` e para script:
 
@@ -28,6 +29,7 @@ curl -s localhost:8765/api/execucoes  | jq '.execucoes[0]'
 curl -s localhost:8765/api/agenda     | jq '.modo, .slots[].proximo'
 curl -s localhost:8765/api/acervo     | jq '.total, .resumo.por_triagem'
 curl -s 'localhost:8765/api/acervo?q=nostr&triagem=inbox&limite=20' | jq '.no_filtro'
+curl -s 'localhost:8765/api/chat?q=o+que+eu+sei+de+nostr'             | jq -r '.resposta.texto'
 ```
 
 ## O gestor: as oito regras
@@ -114,10 +116,48 @@ DLB_SYNC_AT=03:30
 Depois, `./dlb.sh prod up` — não `restart`. A tela de agenda avisa quando o `AT`
 está definido e sendo ignorado.
 
+## O chat, e por que ele é contido
+
+A pergunta vai para `busca.buscar()` — **a mesma função** que `dlb buscar` chama,
+com o mesmo `cfg` e o mesmo acervo. A resposta na tela e a no terminal saem do
+mesmo código; não há um segundo mecanismo de busca para divergir.
+
+O que o painel acrescenta é contenção, e ela existe por um motivo concreto: o
+modelo roda por binário local (`codex`, `claude`) já logado, sem chave de API, e o
+painel é o **terceiro** consumidor da mesma janela de uso — depois da classificação
+diária e do responder. Se ele come a quota, a classificação da noite falha e o
+painel reporta um erro que ele mesmo causou.
+
+| Limite | Valor | Por quê |
+|---|---|---|
+| Fila de um | 1 rodando + 1 esperando | A terceira pergunta é recusada em vez de empilhar processos `codex` |
+| Teto por hora | `PAINEL_CHAT_MAX_POR_HORA` (20) | Contado em `.state/painel.json`; **sobrevive a reinício**, porque quota não reinicia com o processo |
+| Espera na fila | `PAINEL_CHAT_ESPERA_S` (120 s) | Quanto uma pergunta aguarda a anterior antes de desistir |
+| Timeout do modelo | `SINTESE_TIMEOUT` (900 s) | É o do runner. Um segundo timeout no painel não mataria o subprocess — só mentiria sobre ter matado |
+
+A tela mostra quantas chamadas foram feitas na última hora, e o histórico da
+sessão fica **em memória**: reiniciar o painel perde as perguntas. Persistir
+transcrição pede decidir onde ela mora e quem pode ler, e ainda não há
+autenticação.
+
+**Sem streaming de token.** `busca.buscar()` chama runners que usam
+`subprocess.run(capture_output=True)`, então a saída só existe quando o processo
+termina — a resposta chega inteira, depois de uns 20 segundos. Prometer streaming
+aqui seria desenhar uma barra falsa.
+
+`/chat` é a única rota que gasta modelo, e por isso é a única com guarda de
+origem: requisição com `Sec-Fetch-Site` diferente de `same-origin`/`none` recebe
+403. Sem isso, uma página hostil aberta na mesma máquina poderia queimar a janela
+de uso com `<img src="/chat?q=...">` — pedido que não manda `Origin` nenhum, então
+checar `Origin` não pegaria. Cliente sem o cabeçalho (curl, script) passa: a
+guarda é contra navegador, que é quem tem o problema.
+
 ## Somente leitura
 
-Nesta versão o painel **não escreve nada**. Qualquer `POST`/`PUT`/`DELETE`/`PATCH`
-responde `405`. Botão só entra junto da fronteira de mutação (checagem de
+Nesta versão o painel **não muda nada no vault nem no `.env`**. Qualquer
+`POST`/`PUT`/`DELETE`/`PATCH` responde `405`. As duas únicas escritas são de
+contabilidade própria: `.state/runs/` (o run do próprio painel) e
+`.state/painel.json` (as chamadas de modelo do chat), ambos com escritor único. Botão só entra junto da fronteira de mutação (checagem de
 `Origin`, CSRF, token), e não antes — senão existiria uma janela com botão e sem
 guarda.
 

@@ -73,6 +73,27 @@ class TestUmDiretorioPorRun(JournalCase):
         self.assertEqual(journal.ler(run.diretorio)["status"], "ok")
 
 
+class TestProcessoLongevo(JournalCase):
+    """`painel` e `responder` ficam de pé por desenho, e não são job pendurado.
+
+    Descoberto matando o painel com SIGTERM durante o teste ao vivo: sinal não é
+    exceção, o `registrar` não o vê, e o resumo fica `rodando` para sempre. Para
+    `sync` isso é anomalia e o gestor alerta; para o painel é o normal.
+    """
+
+    def test_painel_e_responder_saem_marcados(self):
+        for comando in ("painel", "responder"):
+            with self.subTest(comando):
+                run = journal.abrir(self.state, comando, [])
+                self.assertTrue(journal.ler(run.diretorio)["longevo"])
+
+    def test_comando_de_ciclo_nao_e_longevo(self):
+        for comando in ("sync", "backfill", "sintese", "ressurgir"):
+            with self.subTest(comando):
+                run = journal.abrir(self.state, comando, [])
+                self.assertFalse(journal.ler(run.diretorio)["longevo"])
+
+
 class TestOsQuatroDesfechos(JournalCase):
     def test_codigo_zero_e_ok(self):
         with journal.registrar(self.state, "sync", []) as run:

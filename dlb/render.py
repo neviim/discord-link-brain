@@ -100,6 +100,7 @@ MENU = (
     ("/execucoes", "Execuções"),
     ("/agenda", "Agenda"),
     ("/acervo", "Acervo"),
+    ("/chat", "Chat"),
 )
 
 _PAGINA = """<!doctype html>
