@@ -12,6 +12,7 @@ para rodar. Aqui está o resto, separado por **o que você está tentando fazer*
 | saber **por que** algo foi feito daquele jeito | [DECISOES.md](DECISOES.md) |
 | mexer no código, rodar teste, estender | [DESENVOLVIMENTO.md](DESENVOLVIMENTO.md) |
 | acompanhar pelo navegador o que rodou e o que está no acervo | [PAINEL.md](PAINEL.md) |
+| refazer em outro projeto a apresentação dos testes | [PADRAO_SAIDA_DE_TESTES.md](PADRAO_SAIDA_DE_TESTES.md) |
 
 ## Os onze comandos
 

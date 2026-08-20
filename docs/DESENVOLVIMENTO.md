@@ -32,10 +32,10 @@ escapes ANSI, e degradam para texto puro quando a saída não é terminal.
 `-m` aceita `painel` ou `test_painel`, e é repetível. `--cor sempre|nunca` força a
 decisão de cor, que por padrão segue o terminal e respeita `NO_COLOR`.
 
-> O **estilo, formato e método** desta apresentação estão descritos de forma portável
-> em `~/.buzz/GUIDES/PADRAO_SAIDA_DE_TESTES.md` — princípios, gramática visual, as
-> três armadilhas de implementação e como refazer isso em outro projeto, inclusive
-> fora de Python. Este `testar.py` é uma implementação daquele padrão.
+> O **estilo, formato e método** desta apresentação estão em
+> [PADRAO_SAIDA_DE_TESTES.md](PADRAO_SAIDA_DE_TESTES.md) — princípios, gramática
+> visual, as três armadilhas de implementação e como refazer isso em outro projeto,
+> inclusive fora de Python. Este `testar.py` é uma implementação daquele padrão.
 
 ### Como saber que passou
 

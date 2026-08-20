@@ -26,6 +26,7 @@ Discord  →  extrai links  →  lê a página   →  LLM classifica  →  vault
 | saber **por que** algo é assim | [docs/DECISOES.md](docs/DECISOES.md) |
 | mexer no código | [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md) |
 | **acompanhar tudo pelo navegador** | [docs/PAINEL.md](docs/PAINEL.md) |
+| refazer a apresentação dos testes em outro projeto | [docs/PADRAO_SAIDA_DE_TESTES.md](docs/PADRAO_SAIDA_DE_TESTES.md) |
 
 ## O que ele escreve no vault
 
