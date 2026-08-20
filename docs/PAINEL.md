@@ -3,13 +3,98 @@
 Acompanhar o que o sistema fez, o que está pendente e o que está no acervo — sem
 abrir o log do Docker nem o `.state/` na mão.
 
-```bash
-python3 -m dlb painel                 # http://127.0.0.1:8765
-python3 -m dlb painel --porta 9000
-```
-
 Roda **no host**, não dentro do container. Precisa do `.env` do projeto (o mesmo
 que a CLI usa) e de acesso de leitura ao vault.
+
+## Como usar
+
+### 1. Na sua máquina, e nada mais
+
+```bash
+cd ~/Developer/discord-link-brain
+python3 -m dlb painel                 # http://127.0.0.1:8765
+python3 -m dlb painel --porta 9000    # se a 8765 estiver ocupada
+```
+
+É o caminho mais curto e não pede senha: sem `PAINEL_TOKEN` no `.env`, o painel só
+aceita subir em `127.0.0.1`, e quem alcança a porta já está na máquina.
+
+Para parar: `Ctrl-C`. Fechar o terminal também derruba — é o que o serviço abaixo
+resolve.
+
+### 2. De outra máquina, pela tailnet
+
+Duas chaves no `.env`:
+
+```bash
+PAINEL_TOKEN=<token forte>            # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+PAINEL_HOSTS=dotcom,dotcom.taile537f.ts.net
+```
+
+`PAINEL_TOKEN` liga a autenticação; `PAINEL_HOSTS` são os nomes pelos quais o
+painel aceita ser chamado — sem eles, acessar por `http://dotcom:8765` recebe
+**421**, porque a checagem de `Host` é o que fecha DNS rebinding.
+
+Depois:
+
+```bash
+python3 -m dlb painel --host "$(tailscale ip -4)"
+```
+
+Da outra máquina, `http://dotcom:8765`. Ele pede o token uma vez e guarda cookie.
+O tráfego é WireGuard, então o token não viaja em texto puro na rede mesmo sem TLS.
+**Fora de uma rede já criptografada, ponha um proxy com TLS na frente.**
+
+### 3. Subindo junto com a máquina (recomendado)
+
+Serviço de **usuário**, sem sudo. O arquivo vive no repositório, então precisa ser
+**copiado** — sem a cópia, `systemctl --user restart dlb-painel` responde
+`Unit dlb-painel.service not found`:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp docker/dlb-painel.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now dlb-painel
+```
+
+O serviço liga no IP da tailnet quando ele existe, e cai para `127.0.0.1` quando
+não. Depois:
+
+```bash
+systemctl --user restart dlb-painel   # depois de atualizar o código
+systemctl --user status dlb-painel
+journalctl --user -u dlb-painel -f    # o log
+systemctl --user stop dlb-painel
+```
+
+Duas coisas que o serviço **não** faz sozinho:
+
+- **sobreviver ao logout** — precisa de `sudo loginctl enable-linger $USER`;
+- **se atualizar** — depois de um `git pull` que mexa na unit, repita a cópia e o
+  `daemon-reload`.
+
+### 4. O de todo dia
+
+| Quero | Vou em |
+|---|---|
+| ver se está tudo de pé | **Painel** — dois heartbeats, alertas do gestor, o ciclo |
+| saber o que rodou e por que falhou | **Execuções** — e os quatro botões de rodar agora |
+| conferir quando é o próximo sync | **Agenda** — e `.env` × container |
+| achar um link, triar o acervo | **Acervo** — busca literal e o seletor de triagem |
+| perguntar em linguagem natural | **Chat** — mesma resposta do `dlb buscar` |
+| mexer numa variável | **Configuração** — salvar, aplicar, desfazer |
+
+### Quando algo não abre
+
+| Sintoma | Causa quase certa |
+|---|---|
+| `Address already in use` | já tem painel na porta — `pgrep -fa "dlb painel"` |
+| `401` em tudo | `PAINEL_TOKEN` definido e sem sessão: entre pelo formulário |
+| `421 Host não atendido` | acesse por nome que esteja em `PAINEL_HOSTS` |
+| `403 origem cruzada` | o JSON da resposta traz `origin_recebido` e `nomes_aceitos` |
+| banner diz "PAINEL_TOKEN vazio" mas o `.env` tem | processo velho no ar — reinicie |
+| mudei o `.env` e nada mudou | é a faixa *salvo ≠ aplicado*: clique em aplicar |
 
 ## As seis telas
 
@@ -215,20 +300,7 @@ O hostname entra sozinho porque é o que se digita numa tailnet com MagicDNS
 (`dotcom.taile537f.ts.net`) e domínio de proxy vão em `PAINEL_HOSTS`, declarados por
 quem opera em vez de deduzidos.
 
-### Acessar de outra máquina pela tailnet
-
-```bash
-# no .env
-PAINEL_TOKEN=<token forte>
-PAINEL_HOSTS=dotcom,dotcom.taile537f.ts.net
-
-# subir ligado só na interface da tailnet
-python3 -m dlb painel --host "$(tailscale ip -4)"
-```
-
-Da outra máquina: `http://dotcom:8765`. O tráfego é WireGuard, então o token não
-viaja em texto puro na rede mesmo sem TLS — é o único caso em que HTTP simples
-serve. Fora de uma rede já criptografada, proxy com TLS na frente.
+O passo a passo para expor na tailnet está em **Como usar**, no topo.
 
 ### A fronteira de mutação
 
@@ -326,36 +398,25 @@ existe.
 O CSS e o JS ficam abertos — a tela de login precisa deles, e não há neles nada que
 não esteja no repositório.
 
-## Subir junto com a máquina
+## O serviço systemd, por dentro
 
-`docker/dlb-painel.service` é um serviço **de usuário** (não precisa de sudo). O
-arquivo vive no repositório, então **precisa ser copiado** — sem a cópia,
-`systemctl --user restart dlb-painel` responde `Unit dlb-painel.service not found`:
-
-```bash
-mkdir -p ~/.config/systemd/user
-cp docker/dlb-painel.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user enable --now dlb-painel
-journalctl --user -u dlb-painel -f
-```
-
-Depois de cada `git pull` que mexa na unit, repita a cópia e o `daemon-reload`.
-
-O serviço **liga no IP da tailnet** quando ele existe, e cai para `127.0.0.1`
-quando não — no boot o `tailscaled` pode ainda não ter endereço, e um `--host ""`
-viraria bind em todas as interfaces.
-
-Para continuar de pé depois de você sair da sessão: `sudo loginctl enable-linger $USER`.
-
-Duas escolhas dentro do arquivo:
+Os comandos estão em **Como usar**, no topo. Aqui é o porquê das escolhas dentro de
+`docker/dlb-painel.service`:
 
 - **`KillSignal=SIGTERM` e o painel trata o sinal.** Sinal não é exceção, então sem
   o tratador `systemctl stop` deixaria o run do painel eternamente "rodando" no
   journal. Descoberto matando o painel à mão durante os testes.
+- **`exec` dentro do `sh -c`.** Sem ele o shell fica como pai e o SIGTERM morre
+  nele, o que anula o item de cima.
+- **Bind no IP da tailnet com fallback para loopback.** No boot o `tailscaled` pode
+  ainda não ter endereço, e um `--host ""` viraria bind em todas as interfaces —
+  pior que loopback. Verificado que o systemd **não** estraga o `${IP:-127.0.0.1}`
+  dentro do `sh -c`, o que não era óbvio: a expansão dele não suporta a forma `:-`.
 - **Sem `EnvironmentFile`.** O painel lê o `.env` do projeto por conta própria.
   Duplicar aqui criaria uma segunda fonte de verdade que só atualiza com
   `daemon-reload` — exatamente o defeito do `restart` que não relê o `.env`, de novo.
+- **`Restart=on-failure`, não `always`.** `always` reiniciaria em laço um painel que
+  não consegue subir — porta ocupada, por exemplo — enchendo o journal.
 
 ## Por que só em `127.0.0.1`
 

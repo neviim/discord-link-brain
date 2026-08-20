@@ -25,6 +25,7 @@ Discord  →  extrai links  →  lê a página   →  LLM classifica  →  vault
 | rodar, agendar, resolver problema | [docs/OPERACAO.md](docs/OPERACAO.md) |
 | saber **por que** algo é assim | [docs/DECISOES.md](docs/DECISOES.md) |
 | mexer no código | [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md) |
+| **acompanhar tudo pelo navegador** | [docs/PAINEL.md](docs/PAINEL.md) |
 
 ## O que ele escreve no vault
 
@@ -111,6 +112,19 @@ OBSIDIAN_VAULT=~/Documents/00_Obsidian-dotcom/dotcom
 > para ler canais aos quais só você tem acesso, mas automatizar uma conta
 > pessoal viola os Termos de Serviço do Discord e pode banir a conta. Use bot.
 
+## Painel
+
+Seis telas no navegador — o que rodou, o que está pendente, a agenda, o acervo, um
+chat sobre ele e a configuração. Roda no host, sem dependência nova:
+
+```bash
+python3 -m dlb painel                 # http://127.0.0.1:8765
+```
+
+Sem `PAINEL_TOKEN` no `.env` ele só sobe em `127.0.0.1`, de propósito. Para acessar
+de outra máquina pela tailnet, e para subir junto com o sistema pelo systemd, o
+passo a passo está em **[docs/PAINEL.md](docs/PAINEL.md)**.
+
 ## Uso
 
 ```bash
@@ -138,6 +152,9 @@ python3 -m dlb temas
 
 # ver o que faria sem escrever nada
 python3 -m dlb sync --since 3 --dry-run
+
+# acompanhar tudo pelo navegador (ver docs/PAINEL.md)
+python3 -m dlb painel
 
 # apanhado da semana, lendo o que já está no vault
 python3 -m dlb semana --days 7
