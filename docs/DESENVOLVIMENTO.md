@@ -25,7 +25,7 @@ arquivo, linha e o que era esperado.
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `test_gestor.py` | 37 | **as oito regras do gestor**: uma classe por regra, e cada uma prova que dispara *e* que fica calada |
-| `test_config_tela.py` | 75 | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
+| `test_config_tela.py` | 78 | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, reparo do link da mensagem |
 | `test_ressurgir_temas.py` | 38 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, regeneração |
@@ -53,7 +53,7 @@ arquivo, linha e o que era esperado.
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| **total** | **805** | 89% das linhas de `dlb/` |
+| **total** | **808** | 89% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.

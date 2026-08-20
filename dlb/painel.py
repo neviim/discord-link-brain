@@ -1367,7 +1367,15 @@ class Handler(BaseHTTPRequestHandler):
         Ausência de `Origin` e de `Referer` é cliente que não é navegador (curl),
         e aí o CSRF token — que ele não tem como adivinhar — é quem barra.
         """
-        origem = self.headers.get("Origin") or self.headers.get("Referer") or ""
+        origem = self.headers.get("Origin") or ""
+        if origem.strip().lower() == "null":
+            # Origem opaca: `file://`, iframe com sandbox, ou política de
+            # referrer restritiva. Não é "origem hostil" nem "mesma origem" — é
+            # ausência de informação, e o que decide nesse caso é o token de CSRF,
+            # que uma página de outra origem não consegue ler (política de mesma
+            # origem impede ler a resposta que o traz).
+            origem = ""
+        origem = origem or self.headers.get("Referer") or ""
         if not origem:
             return True
         try:
@@ -1703,7 +1711,17 @@ class Handler(BaseHTTPRequestHandler):
         # O painel mostra estado agora. Cache aqui produz tela mentindo.
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        # `same-origin`, não `no-referrer`. A diferença não é estética: com
+        # `no-referrer` o navegador não manda `Referer` **e** serializa a origem
+        # como opaca, mandando `Origin: null` no POST do formulário. O painel
+        # recusava o próprio formulário por causa de um cabeçalho que eu tinha
+        # posto por higiene — e nenhum teste pegou, porque teste manda os
+        # cabeçalhos que o teste quer, não os que o navegador decide mandar.
+        #
+        # `same-origin` mantém a privacidade que interessa (nada vaza para
+        # terceiro) e devolve `Origin` e `Referer` nas requisições do próprio
+        # painel.
+        self.send_header("Referrer-Policy", "same-origin")
         # Nada de externo: sem CDN, sem fonte remota, sem inline. Fecha o
         # caminho fácil de um XSS virar exfiltração.
         self.send_header(

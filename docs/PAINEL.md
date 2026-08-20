@@ -243,6 +243,16 @@ navegador manda `Origin: https://dotcom.taile537f.ts.net` e o proxy reescreve o
 "origem cruzada recusada". Só o nome é comparado, sem porta: atrás de proxy a porta
 pública não é a interna.
 
+`Origin: null` — origem opaca, que aparece com `file://`, iframe com sandbox ou
+política de referrer restritiva — conta como **ausência de informação**, não como
+hostilidade: passa a checagem de origem e é barrada, se for o caso, pelo token de
+CSRF, que uma página de outra origem não consegue ler.
+
+A resposta manda `Referrer-Policy: same-origin`, e não `no-referrer`. A diferença
+não é estética: com `no-referrer` o navegador serializa a origem como opaca e manda
+`Origin: null` no POST do próprio formulário — o painel recusava a si mesmo por
+causa de um cabeçalho posto por higiene.
+
 Quando recusa, a resposta **diz o que viu e o que aceita**: `origin_recebido`,
 `host_recebido` e `nomes_aceitos`. São cabeçalhos do próprio navegador de quem
 pediu, e ter esses três valores na mão é a diferença entre consertar na hora e
