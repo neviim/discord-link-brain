@@ -328,7 +328,9 @@ não esteja no repositório.
 
 ## Subir junto com a máquina
 
-`docker/dlb-painel.service` é um serviço **de usuário** (não precisa de sudo):
+`docker/dlb-painel.service` é um serviço **de usuário** (não precisa de sudo). O
+arquivo vive no repositório, então **precisa ser copiado** — sem a cópia,
+`systemctl --user restart dlb-painel` responde `Unit dlb-painel.service not found`:
 
 ```bash
 mkdir -p ~/.config/systemd/user
@@ -337,6 +339,12 @@ systemctl --user daemon-reload
 systemctl --user enable --now dlb-painel
 journalctl --user -u dlb-painel -f
 ```
+
+Depois de cada `git pull` que mexa na unit, repita a cópia e o `daemon-reload`.
+
+O serviço **liga no IP da tailnet** quando ele existe, e cai para `127.0.0.1`
+quando não — no boot o `tailscaled` pode ainda não ter endereço, e um `--host ""`
+viraria bind em todas as interfaces.
 
 Para continuar de pé depois de você sair da sessão: `sudo loginctl enable-linger $USER`.
 
