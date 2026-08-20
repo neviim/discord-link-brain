@@ -5,20 +5,83 @@ Mexer no código, rodar teste, estender.
 ## Rodando os testes
 
 ```bash
-./dlb.sh dev test                            # dentro do container (recomendado)
-python3 -m unittest discover -s tests -t .   # no host, só precisa de PyYAML
+./testar.py            # a suíte inteira, módulo por módulo, com resumo legível
+./testar.py --help     # todos os modos
 ```
 
-Só um pedaço, quando você está mexendo em uma parte:
+`./testar.py` é um invólucro sobre o `unittest` — não substitui nada, e cada modo
+abaixo mostra a linha crua equivalente. Ele existe por dois motivos: "rodar os
+testes" aqui tem seis formas legítimas, e a saída padrão responde *passou?* com uma
+palavra no fim de uma parede de pontos. Sem dependência nova: cor e caixa são
+escapes ANSI, e degradam para texto puro quando a saída não é terminal.
+
+### As sete formas
+
+| Comando | Quando usar | Equivalente cru |
+|---|---|---|
+| `./testar.py` | o de todo dia — vê qual **módulo** quebrou | um `python3 -m unittest tests.X` por módulo |
+| `./testar.py --um-processo` | o mais rápido (~5 s), sem isolamento | `python3 -m unittest discover -s tests -t .` |
+| `./testar.py -m painel -m chat` | mexendo em uma parte | `python3 -m unittest tests.test_painel` |
+| `./testar.py -t tests.test_chat.TestFilaDeUm` | uma classe ou um teste só, com saída completa | `python3 -m unittest tests.test_chat.TestFilaDeUm -v` |
+| `./testar.py --repetir 10` | **caçar teste instável** | rodar a suíte dez vezes na mão |
+| `./testar.py --cobertura` | cobertura por linha, com barra por módulo | o `docker run` com `coverage` de baixo |
+| `./testar.py --docker` | como o container roda | `./dlb.sh dev test` |
+| `./testar.py --listar` | quantos testes cada arquivo tem (não roda nada) | — |
+| `./testar.py --tudo` | antes de um commit grande: host + 3 voltas + cobertura | os três acima em sequência |
+
+`-m` aceita `painel` ou `test_painel`, e é repetível. `--cor sempre|nunca` força a
+decisão de cor, que por padrão segue o terminal e respeita `NO_COLOR`.
+
+### Como saber que passou
+
+O último bloco responde isso a um metro de distância, e o **código de saída**
+acompanha — dá para usar em script e em CI:
+
+```
+╭──────────────────────────────────────────────────────╮
+│ ✔  PASSOU                                            │
+├──────────────────────────────────────────────────────┤
+│ 810 testes, nenhuma falha · 5.1s                     │
+╰──────────────────────────────────────────────────────╯
+```
+
+| O que você vê | Código | Significa |
+|---|---|---|
+| `✔  PASSOU` (verde) | **0** | todos rodaram e nenhum quebrou |
+| `✘  FALHOU` (vermelho) | **1** | tem teste quebrado, e os nomes vêm listados com o trecho da asserção |
+| `⚠  NADA RODOU` (amarelo) | **2** | o comando não chegou a rodar a suíte — falta `.env`, imagem não construída, nome de módulo errado |
+
+O terceiro caso existe porque a primeira versão deste script imprimia
+`✔ PASSOU · 0 testes` quando o `./dlb.sh dev test` abortava por falta de `.env`.
+**Saída que mente é pior que saída feia**: zero teste executado não é sucesso.
+
+Por módulo, a linha diz o que interessa sem abrir nada:
+
+```
+  ✔ test_painel        68 testes   2.18s
+  ✘ test_chat          18 testes   0.18s  2 quebrado(s)
+  ✔ test_gestor        37 testes   0.06s  1 pulado(s)
+```
+
+`pulado` não é falha: alguns testes se pulam quando a ferramenta que eles auditam
+não está na máquina — o do `.gitignore` precisa do `git`, que **não existe na imagem
+`dev`**. Pular é honesto; reimplementar a semântica do `.gitignore` para não depender
+do `git` seria trocar a autoridade por um palpite.
+
+### Ainda dá para chamar o `unittest` direto
+
+O script não esconde nada. Estas linhas continuam valendo, e são o que ele executa:
 
 ```bash
+python3 -m unittest discover -s tests -t .                  # tudo, no host
 python3 -m unittest tests.test_classify                     # um arquivo
 python3 -m unittest tests.test_classify.TestParseJsonArray  # uma classe
 python3 -m unittest tests.test_bordas.TestSnowflake.test_epoch_do_discord_e_o_snowflake_zero -v
+./dlb.sh dev test                                           # dentro do container
 ```
 
-`OK` no fim é o que importa. Falha aparece como `FAILED (failures=N)` com
-arquivo, linha e o que era esperado.
+`OK` no fim é o que importa. Falha aparece como `FAILED (failures=N)` com arquivo,
+linha e o que era esperado.
 
 ## O que cada arquivo cobre
 
