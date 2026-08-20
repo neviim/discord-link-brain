@@ -23,8 +23,10 @@ não antes, para não haver uma janela em que exista botão e não exista guarda
 
 from __future__ import annotations
 
+import hmac
 import json
 import secrets
+import signal
 import threading
 import time
 from datetime import datetime, timezone
@@ -48,6 +50,8 @@ ARQUIVOS_ESTATICOS = {
 }
 
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+COOKIE = "dlb_painel"
 
 # Teto do corpo de um POST. O formulário de configuração inteiro, com as 55 chaves
 # preenchidas, não passa de alguns KB — 256 KB é folga de duas ordens de grandeza
@@ -114,6 +118,33 @@ class Estado:
         # Resultado do último POST, mostrado no GET seguinte. POST-redirect-GET
         # existe para F5 no navegador não reenviar o formulário ao recarregar.
         self.ultimo_aviso: Raw = Raw("")
+
+        # Sessões abertas, em memória. Reiniciar o painel derruba todas, e isso é
+        # aceitável: são segundos para entrar de novo, e guardar sessão em disco
+        # pediria decidir expiração, rotação e onde o arquivo mora — peça a mais
+        # para um painel de um usuário.
+        self.sessoes: set[str] = set()
+
+    @property
+    def exige_token(self) -> bool:
+        return bool(self.cfg.painel_token)
+
+    def entrar(self, token: str) -> str | None:
+        """Confere o token e abre sessão. `None` se não bateu.
+
+        `hmac.compare_digest` porque comparar segredo com `==` vaza o tamanho do
+        prefixo comum pelo tempo de resposta. É barato de fazer certo.
+        """
+        if not self.exige_token:
+            return None
+        if not hmac.compare_digest(token or "", self.cfg.painel_token):
+            return None
+        sessao = secrets.token_urlsafe(32)
+        self.sessoes.add(sessao)
+        return sessao
+
+    def sessao_valida(self, cookie: str) -> bool:
+        return any(hmac.compare_digest(cookie or "", s) for s in self.sessoes)
 
     # `ThreadingHTTPServer` atende em paralelo, e o memo do acervo é um dict
     # compartilhado. A leitura em si é barata; serializar evita duas threads
@@ -522,6 +553,28 @@ $tabela""",
         tabela=_tabela_execucoes(runs),
     )
     return pagina("Execuções", corpo, ativo="/execucoes", vault=str(estado.cfg.vault_path))
+
+
+_LOGIN = """<h1>Painel do dlb</h1>
+<p class=detalhe>$motivo</p>
+<form method=post action="/entrar" class=busca>
+  <input type=password name=token placeholder="token do painel" autofocus>
+  <button type=submit>entrar</button>
+</form>"""
+
+
+def _view_login(estado: Estado, motivo: str = "") -> str:
+    return pagina(
+        "Entrar",
+        substituir(
+            _LOGIN,
+            motivo=motivo
+            or "Este painel pede token (`PAINEL_TOKEN` no `.env`). A sessão vale até "
+            "o painel ser reiniciado.",
+        ),
+        ativo="",
+        vault=str(estado.cfg.vault_path),
+    )
 
 
 def _view_agenda(estado: Estado) -> str:
@@ -1145,6 +1198,25 @@ class Handler(BaseHTTPRequestHandler):
         depois de ler um corpo sem teto já teria deixado alguém prender memória.
         """
         rota = urlparse(self.path).path.rstrip("/") or "/"
+        if rota == "/entrar":
+            # Login vem antes de tudo: não há sessão para checar, e o CSRF token
+            # da tela de login existe, mas exigi-lo aqui só criaria um caminho em
+            # que ninguém consegue entrar depois de reiniciar o painel.
+            try:
+                corpo_bruto = self._ler_corpo()
+            except ValueError as exc:
+                self._json({"erro": str(exc)}, True, codigo=413)
+                return
+            if not self._origem_confiavel():
+                self._json({"erro": "origem cruzada recusada"}, True, codigo=403)
+                return
+            self._entrar(
+                {k: v[0] if v else "" for k, v in parse_qs(corpo_bruto, keep_blank_values=True).items()}
+            )
+            return
+        if not self._autorizado():
+            self._json({"erro": "não autenticado"}, True, codigo=401)
+            return
         if rota not in {
             "/config/salvar",
             "/config/aplicar",
@@ -1304,9 +1376,60 @@ class Handler(BaseHTTPRequestHandler):
                 "<article class='faixa faixa-alerta'><p>Não havia backup para voltar.</p></article>"
             )
 
+    # ---------------------------------------------------------- autenticação
+
+    def _cookie_sessao(self) -> str:
+        """O valor do cookie de sessão, se houver. Parse à mão e sem tolerância.
+
+        `http.cookies` resolveria, mas o formato aqui é um par só e o parser da
+        stdlib tolera coisa que navegador não manda — menos superfície é melhor
+        numa checagem de acesso.
+        """
+        bruto = self.headers.get("Cookie") or ""
+        for pedaco in bruto.split(";"):
+            nome, _, valor = pedaco.strip().partition("=")
+            if nome == COOKIE:
+                return valor.strip()
+        return ""
+
+    def _autorizado(self) -> bool:
+        estado = self.estado
+        if not estado.exige_token:
+            # Sem token configurado o painel só sobe em loopback (ver `construir`),
+            # então quem alcança a porta já está na máquina.
+            return True
+        return estado.sessao_valida(self._cookie_sessao())
+
+    def _entrar(self, campos: dict) -> None:
+        sessao = self.estado.entrar(campos.get("token", ""))
+        if sessao is None:
+            # Sem dizer se o token existe ou está errado, e sem tela de "tente
+            # de novo" que conte tentativas: são dados que só ajudam quem adivinha.
+            self._html(_view_login(self.estado, "Token não aceito."), True, codigo=401)
+            return
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header(
+            "Set-Cookie",
+            # `HttpOnly`: JavaScript não lê, então um XSS não rouba a sessão.
+            # `SameSite=Strict`: navegador não manda o cookie em requisição vinda
+            # de outro site, o que fecha o CSRF por baixo do token de formulário.
+            f"{COOKIE}={sessao}; HttpOnly; SameSite=Strict; Path=/",
+        )
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def _despachar(self, corpo: bool) -> None:
         alvo = urlparse(self.path)
         rota, consulta = alvo.path.rstrip("/") or "/", parse_qs(alvo.query)
+        # O CSS e o JS ficam abertos: a tela de login precisa deles, e não há nada
+        # neles que não esteja no repositório.
+        if not rota.startswith("/static/") and not self._autorizado():
+            if rota.startswith("/api/"):
+                self._json({"erro": "não autenticado"}, corpo, codigo=401)
+            else:
+                self._html(_view_login(self.estado), corpo, codigo=401)
+            return
         try:
             if rota == "/":
                 self._html(_view_painel(self.estado), corpo)
@@ -1513,15 +1636,17 @@ def _inteiro(consulta: dict, nome: str, padrao: int) -> int:
 def construir(cfg: Config, host: str = "127.0.0.1", porta: int = 8765, silencioso: bool = False):
     """Cria o servidor sem subir o laço — é o que o teste usa.
 
-    Recusa host fora de loopback: `http.server` não tem timeout de leitura nem
-    teto de conexão, então na borda um slowloris o derruba. Enquanto não houver
-    autenticação e proxy, a resposta certa é não deixar subir.
+    Fora de loopback **exige** `PAINEL_TOKEN`. Sem token, qualquer um que alcance a
+    porta entra, e `http.server` não tem timeout de leitura nem teto de conexão:
+    seria um servidor de borda sem autenticação e sem defesa contra conexão lenta.
+    Com token ainda falta TLS, e o aviso na subida diz isso — token em HTTP puro só
+    é aceitável dentro de rede já criptografada, como uma tailnet.
     """
-    if host not in LOOPBACK:
+    if host not in LOOPBACK and not cfg.painel_token:
         raise Erro(
-            f"host {host!r} não é loopback. Nesta fase o painel só sobe em 127.0.0.1: "
-            "não há autenticação, e `http.server` não tem timeout nem limite de conexão. "
-            "Para acessar de outra máquina, ponha um proxy com TLS na frente."
+            f"host {host!r} não é loopback e `PAINEL_TOKEN` está vazio. Sem token, quem "
+            "alcança a porta entra. Defina PAINEL_TOKEN no .env, ou use "
+            "`ssh -N -L 8765:127.0.0.1:8765` e continue em loopback."
         )
     servidor = ThreadingHTTPServer((host, porta), Handler)
     servidor.estado = Estado(cfg)          # type: ignore[attr-defined]
@@ -1534,7 +1659,29 @@ def servir(cfg: Config, host: str = "127.0.0.1", porta: int = 8765) -> int:
     servidor = construir(cfg, host, porta)
     endereco = f"http://{host}:{servidor.server_port}"
     print(f"Painel em {endereco} — vault {cfg.vault_path}")
+    if cfg.painel_token:
+        print("Autenticação: PAINEL_TOKEN definido — o painel vai pedir o token.")
+        if host not in LOOPBACK:
+            print(
+                "AVISO: sem TLS o token viaja em texto puro. Só faça isso dentro de "
+                "rede criptografada (tailnet) ou atrás de um proxy com TLS."
+            )
+    else:
+        print("Sem autenticação (PAINEL_TOKEN vazio) — por isso só em loopback.")
     print("Ctrl-C para parar.")
+
+    # SIGTERM é como o systemd para o serviço, e sinal **não é exceção**: sem este
+    # tratador, `systemctl stop` deixaria o run do painel eternamente "rodando" no
+    # journal. Descoberto matando o painel à mão durante os testes.
+    def parar(_sinal, _quadro):
+        raise KeyboardInterrupt
+
+    try:
+        signal.signal(signal.SIGTERM, parar)
+    except ValueError:
+        # Não é a thread principal (acontece em teste). Não é motivo para não subir.
+        pass
+
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

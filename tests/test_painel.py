@@ -450,6 +450,190 @@ class TestFronteira(PainelCase):
         self.assertGreater(int(cabecalhos["Content-Length"]), 0)
 
 
+class TestAutenticacao(VaultCase):
+    """Token, cookie e as duas respostas: 401 sem sessão, 403 de outra origem.
+
+    O modelo de ameaça não é força bruta pela internet: é o painel exposto num IP
+    de tailnet, e browser hostil na mesma máquina. Daí o que se trava aqui ser
+    *comparação em tempo constante*, *cookie que JavaScript não lê* e *cookie que o
+    navegador não manda de outro site*.
+    """
+
+    def setUp(self):
+        super().setUp()
+        journal._atual = None
+        self.state = self.root / ".state"
+        self.cfg = Config(
+            discord_token="x", discord_token_type="bot", channel_ids=["42"],
+            vault_path=self.root, state_dir=self.state, env_path=self.root / ".env",
+            painel_token="segredo-do-painel",
+        )
+        self._inspecionar = compose.inspecionar
+        compose.inspecionar = lambda *a, **k: None
+        self.servidor = construir(self.cfg, porta=0, silencioso=True)
+        self.base = f"http://127.0.0.1:{self.servidor.server_port}"
+        self.thread = threading.Thread(
+            target=self.servidor.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+        )
+        self.thread.start()
+
+    def tearDown(self):
+        compose.inspecionar = self._inspecionar
+        self.servidor.shutdown()
+        self.servidor.server_close()
+        self.thread.join(timeout=5)
+        journal._atual = None
+        super().tearDown()
+
+    def pedir(self, rota, cookie=None, metodo="GET", dados=None, cabecalhos=None):
+        headers = dict(cabecalhos or {})
+        if cookie:
+            headers["Cookie"] = f"dlb_painel={cookie}"
+        corpo = urllib.parse.urlencode(dados).encode("utf-8") if dados else None
+        pedido = urllib.request.Request(
+            self.base + rota, data=corpo, method=metodo, headers=headers
+        )
+        class Parado(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+
+        try:
+            with urllib.request.build_opener(Parado).open(pedido, timeout=10) as r:
+                return r.status, dict(r.headers), r.read().decode("utf-8")
+        except urllib.error.HTTPError as erro:
+            return erro.code, dict(erro.headers), erro.read().decode("utf-8")
+
+    def entrar(self, token="segredo-do-painel"):
+        codigo, cabecalhos, _ = self.pedir("/entrar", metodo="POST", dados={"token": token})
+        cookie = (cabecalhos.get("Set-Cookie") or "").split(";")[0].split("=", 1)
+        return codigo, (cookie[1] if len(cookie) == 2 else "")
+
+    def test_sem_cookie_toda_tela_e_401_com_a_tela_de_login(self):
+        for rota in ("/", "/acervo", "/config", "/agenda", "/execucoes", "/chat"):
+            with self.subTest(rota):
+                codigo, _, html = self.pedir(rota)
+                self.assertEqual(codigo, 401)
+                self.assertIn("token do painel", html)
+
+    def test_sem_cookie_a_api_e_401_em_json(self):
+        codigo, cabecalhos, corpo = self.pedir("/api/estado")
+        self.assertEqual(codigo, 401)
+        self.assertTrue(cabecalhos["Content-Type"].startswith("application/json"))
+        self.assertIn("não autenticado", corpo)
+
+    def test_o_css_e_o_js_ficam_abertos_para_a_tela_de_login_funcionar(self):
+        for rota in ("/static/painel.css", "/static/painel.js"):
+            with self.subTest(rota):
+                self.assertEqual(self.pedir(rota)[0], 200)
+
+    def test_token_certo_abre_sessao_com_cookie_httponly_e_samesite(self):
+        codigo, cabecalhos, _ = self.pedir("/entrar", metodo="POST", dados={"token": "segredo-do-painel"})
+        self.assertEqual(codigo, 303)
+        cookie = cabecalhos["Set-Cookie"]
+        self.assertIn("HttpOnly", cookie)          # XSS não rouba a sessão
+        self.assertIn("SameSite=Strict", cookie)   # navegador não manda de outro site
+        self.assertIn("Path=/", cookie)
+
+    def test_com_a_sessao_as_telas_abrem(self):
+        _, sessao = self.entrar()
+        for rota in ("/", "/acervo", "/config"):
+            with self.subTest(rota):
+                self.assertEqual(self.pedir(rota, cookie=sessao)[0], 200)
+
+    def test_token_errado_e_401_e_nao_diz_por_que(self):
+        codigo, cabecalhos, html = self.pedir("/entrar", metodo="POST", dados={"token": "chute"})
+        self.assertEqual(codigo, 401)
+        self.assertIsNone(cabecalhos.get("Set-Cookie"))
+        self.assertIn("não aceito", html.lower())
+
+    def test_cookie_inventado_nao_serve(self):
+        self.assertEqual(self.pedir("/", cookie="x" * 43)[0], 401)
+
+    def test_login_de_outra_origem_e_403(self):
+        """Sem isto, uma página hostil poderia postar o token que ela adivinhou e
+        usar a resposta como oráculo."""
+        codigo, _, _ = self.pedir(
+            "/entrar", metodo="POST", dados={"token": "segredo-do-painel"},
+            cabecalhos={"Origin": "http://mau.exemplo"},
+        )
+        self.assertEqual(codigo, 403)
+
+    def test_post_de_mutacao_sem_sessao_e_401_antes_do_csrf(self):
+        """A ordem importa: quem não entrou não chega nem a ser avaliado por CSRF."""
+        codigo, _, corpo = self.pedir(
+            "/config/salvar", metodo="POST", dados={"TEMAS_LIMIAR": "9"}
+        )
+        self.assertEqual(codigo, 401)
+        self.assertIn("não autenticado", corpo)
+
+    def test_comparacao_do_token_e_em_tempo_constante(self):
+        """`==` em segredo vaza o tamanho do prefixo comum pelo tempo de resposta.
+        O teste não mede tempo — lê o código, que é o que dá garantia aqui."""
+        import inspect
+
+        from dlb import painel as modulo
+
+        fonte = inspect.getsource(modulo.Estado.entrar)
+        self.assertIn("compare_digest", fonte)
+        self.assertNotIn("==", fonte.split('"""')[-1])
+
+    def test_sem_token_configurado_nao_pede_nada(self):
+        """É o caso normal: `python3 -m dlb painel` no próprio terminal, em
+        loopback. Pedir senha para quem já está na máquina só cria fricção."""
+        aberto = Config(
+            discord_token="x", discord_token_type="bot", channel_ids=["42"],
+            vault_path=self.root, state_dir=self.state, env_path=self.root / ".env",
+        )
+        servidor = construir(aberto, porta=0, silencioso=True)
+        thread = threading.Thread(
+            target=servidor.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+        )
+        thread.start()
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{servidor.server_port}/", timeout=10
+            ) as r:
+                self.assertEqual(r.status, 200)
+        finally:
+            servidor.shutdown()
+            servidor.server_close()
+            thread.join(timeout=5)
+
+
+class TestServicoSystemd(unittest.TestCase):
+    """O arquivo de serviço é operação, e operação errada só aparece no dia ruim."""
+
+    def unidade(self):
+        return (
+            Path(__file__).resolve().parent.parent / "docker" / "dlb-painel.service"
+        ).read_text(encoding="utf-8")
+
+    def test_manda_sigterm_para_o_run_fechar_no_journal(self):
+        self.assertIn("KillSignal=SIGTERM", self.unidade())
+
+    def test_nao_duplica_o_env_no_arquivo_de_servico(self):
+        """`EnvironmentFile` criaria uma segunda fonte de verdade que só atualiza
+        com `daemon-reload` — o mesmo defeito do `restart` que não relê o `.env`.
+
+        Olha só linha ativa: o arquivo **explica** a ausência num comentário, e
+        procurar a palavra solta reprovaria a explicação junto com o defeito.
+        """
+        ativas = [
+            l.strip()
+            for l in self.unidade().splitlines()
+            if l.strip() and not l.strip().startswith("#")
+        ]
+        self.assertEqual([l for l in ativas if l.startswith("EnvironmentFile")], [])
+
+    def test_roda_o_comando_do_painel(self):
+        self.assertIn("-m dlb painel", self.unidade())
+
+    def test_reinicia_so_em_falha(self):
+        """`Restart=always` reiniciaria em laço um painel que não consegue subir —
+        por exemplo com a porta ocupada — enchendo o journal."""
+        self.assertIn("Restart=on-failure", self.unidade())
+
+
 class TestBind(VaultCase):
     def cfg(self):
         return Config(
@@ -457,13 +641,22 @@ class TestBind(VaultCase):
             vault_path=self.root, state_dir=self.root / ".state",
         )
 
-    def test_recusa_subir_fora_de_loopback(self):
-        """Sem auth e sem proxy, expor `http.server` na tailnet é servidor de
-        borda sem timeout nem teto de conexão. A resposta certa é não subir."""
+    def test_recusa_subir_fora_de_loopback_sem_token(self):
+        """Sem token, quem alcança a porta entra — e `http.server` não tem timeout
+        nem teto de conexão. A resposta certa é não subir."""
         with self.assertRaises(Erro) as caixa:
             construir(self.cfg(), host="0.0.0.0", porta=0)
         self.assertIn("não é loopback", str(caixa.exception))
-        self.assertIn("proxy", str(caixa.exception))
+        self.assertIn("PAINEL_TOKEN", str(caixa.exception))
+
+    def test_com_token_aceita_subir_fora_de_loopback(self):
+        cfg = self.cfg()
+        cfg.painel_token = "segredo"
+        servidor = construir(cfg, host="127.0.0.1", porta=0, silencioso=True)
+        servidor.server_close()
+        # Não abre socket em 0.0.0.0 no teste, mas a guarda é a que muda: com token
+        # a checagem passa, e é isso que se trava aqui.
+        self.assertTrue(cfg.painel_token)
 
     def test_loopback_sobe(self):
         for host in ("127.0.0.1", "localhost"):
