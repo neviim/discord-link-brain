@@ -1245,7 +1245,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"erro": str(exc)}, True, codigo=413)
                 return
             if not self._origem_confiavel():
-                self._json({"erro": "origem cruzada recusada"}, True, codigo=403)
+                self._json(self._diagnostico_de_origem(), True, codigo=403)
                 return
             self._entrar(
                 {k: v[0] if v else "" for k, v in parse_qs(corpo_bruto, keep_blank_values=True).items()}
@@ -1269,7 +1269,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"erro": str(exc)}, True, codigo=413)
             return
         if not self._origem_confiavel():
-            self._json({"erro": "origem cruzada recusada"}, True, codigo=403)
+            self._json(self._diagnostico_de_origem(), True, codigo=403)
             return
         campos = {k: v[0] if v else "" for k, v in parse_qs(corpo, keep_blank_values=True).items()}
         if not secrets.compare_digest(campos.get("csrf", ""), self.estado.csrf):
@@ -1379,6 +1379,28 @@ class Handler(BaseHTTPRequestHandler):
         return nome.strip().lower().rstrip(".") in self.estado.hosts_aceitos(
             getattr(self.server, "server_address", ("", 0))[0]
         )
+
+    def _diagnostico_de_origem(self) -> dict:
+        """A recusa diz **o que viu e o que aceita**, não só que recusou.
+
+        "origem cruzada recusada" sozinho custou uma ida e volta de adivinhação
+        com o Dotcom: sem o valor do `Origin`, nem eu nem ele sabíamos se era
+        proxy, nome diferente ou processo velho. Estes campos são cabeçalhos do
+        próprio navegador dele — não há segredo em devolvê-los, e há um dia de
+        diferença em ter ou não.
+        """
+        return {
+            "erro": "origem cruzada recusada",
+            "origin_recebido": self.headers.get("Origin"),
+            "referer_recebido": self.headers.get("Referer"),
+            "host_recebido": self.headers.get("Host"),
+            "nomes_aceitos": sorted(
+                self.estado.hosts_aceitos(
+                    getattr(self.server, "server_address", ("", 0))[0]
+                )
+            ),
+            "como_resolver": "acrescente o nome em PAINEL_HOSTS no .env e reinicie o painel",
+        }
 
     def _redirecionar(self, para: str) -> None:
         """303 depois de POST: recarregar a página não reenvia o formulário."""

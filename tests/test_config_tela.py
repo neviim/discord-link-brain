@@ -570,6 +570,19 @@ class TestTelaDeConfig(PainelCase):
         self.assertEqual(codigo, 403)
         self.assertIn("origem cruzada", corpo)
 
+    def test_a_recusa_diz_o_que_viu_e_o_que_aceita(self):
+        """"origem cruzada recusada" sozinho custou uma ida e volta de adivinhação:
+        sem o valor do `Origin` ninguém sabia se era proxy, nome diferente ou
+        processo velho. São cabeçalhos do próprio navegador de quem pediu."""
+        _, corpo = self.postar(
+            "/config/salvar", {"TEMAS_LIMIAR": "23"},
+            cabecalhos={"Origin": "http://mau.exemplo"},
+        )
+        dados = json.loads(corpo)
+        self.assertEqual(dados["origin_recebido"], "http://mau.exemplo")
+        self.assertIn("127.0.0.1", dados["nomes_aceitos"])
+        self.assertIn("PAINEL_HOSTS", dados["como_resolver"])
+
     def test_origem_igual_ao_host_passa(self):
         codigo, _ = self.postar(
             "/config/salvar", {"TEMAS_LIMIAR": "13"},
