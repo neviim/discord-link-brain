@@ -194,7 +194,9 @@ CONFIG_SCHEMA: tuple[Campo, ...] = (
        "`id_canal:id_servidor`. Só o `migrar` usa; o `sync` descobre pela API."),
     # --------------------------------------------------------------- Obsidian
     _c("OBSIDIAN_VAULT", "Obsidian", "caminho", "Caminho do vault", "python",
-       "No container isto é sobrescrito para `/vault` pelo compose.", obrigatorio=True),
+       "Vale para comando rodado no host, já na próxima execução. Dentro do container "
+       "é sempre `/vault` (bind mount), então esta chave nunca aparece como pendente.",
+       obrigatorio=True),
     _c("TIMEZONE", "Obsidian", "texto", "Fuso horário", "agendador",
        "Vira `TZ` dentro do container, e é o fuso em que a grade conta as horas."),
     # -------------------------------------------------------------------- LLM
