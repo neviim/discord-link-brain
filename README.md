@@ -17,6 +17,12 @@ Discord  →  extrai links  →  lê a página   →  LLM classifica  →  vault
 
 ## Documentação
 
+**Primeira vez aqui?** [docs/README.md](docs/README.md) tem a **ordem de leitura** —
+nove passos, do primeiro contato até mexer no código, com o motivo de cada posição e
+atalhos para quem não quer a trilha inteira.
+
+Ou vá direto ao que você precisa:
+
 | Quero… | Leia |
 |---|---|
 | usar a nota atômica, triar, migrar, gerar a síntese semanal | [docs/LINKS.md](docs/LINKS.md) |
