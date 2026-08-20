@@ -278,7 +278,14 @@ class Estado:
         do_arquivo = env_io.ler(self.cfg.env_path)
         inspecao = compose.inspecionar()
         no_container = (inspecao or {}).get("env")
-        chaves = tuple(campo.chave for campo in painel_schema.CONFIG_SCHEMA)
+        # Chave que só o painel lê não entra na comparação com o container:
+        # mostrá-la como pendente mandaria recriar o container por causa de uma
+        # configuração que ele não usa. Ela vale ao reiniciar o painel.
+        chaves = tuple(
+            campo.chave
+            for campo in painel_schema.CONFIG_SCHEMA
+            if campo.onde_vale != "painel"
+        )
         pendentes = compose.divergencias(do_arquivo, no_container, chaves)
 
         # Segredo é write-only, e isso vale para a API igual à tela: o valor sai
@@ -888,6 +895,8 @@ def _campo_html(campo, valor: str, pendente: bool, guardado: bool = False) -> Ra
     ajuda = campo.ajuda
     if campo.onde_vale == "agendador":
         ajuda = (ajuda + " " if ajuda else "") + "Só vale depois de aplicar (recriar o container)."
+    elif campo.onde_vale == "painel":
+        ajuda = (ajuda + " " if ajuda else "") + "Vale ao reiniciar o painel — o container não usa."
     if pendente:
         ajuda = (ajuda + " " if ajuda else "") + "⚠ salvo no .env, ainda não aplicado."
 

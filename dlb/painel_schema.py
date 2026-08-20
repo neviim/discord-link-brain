@@ -30,6 +30,10 @@ uma faixa de aviso em vez de um botão só:
 - `agendador` — lida pelo `docker/scheduler.sh`, do ambiente do container. Só vale
   depois de `docker compose up -d`, que **recria** o container. `restart`
   reaproveita o antigo e não relê nada, sem erro nenhum.
+- `painel` — lida pelo **próprio processo do painel**, que roda no host. Vale ao
+  reiniciar o painel, e o container não tem nada a ver com isso. Estas chaves ficam
+  **fora** da comparação com o container: aparecer como "salvo, não aplicado"
+  mandaria recriar o container por causa de uma configuração que ele não usa.
 
 Ou seja: toda chave precisa de `up` para valer no que roda sozinho. A distinção
 importa para o texto ser honesto — `dlb doctor` no host pode mostrar o valor novo
@@ -293,14 +297,14 @@ CONFIG_SCHEMA: tuple[Campo, ...] = (
     _c("RESPONDER_PENDENTE_EMOJI", "Falar no Discord", "emoji", "Emoji de pendente", "python"),
     _c("RESPONDER_ERRO_EMOJI", "Falar no Discord", "emoji", "Emoji de erro", "python"),
     # --------------------------------------------------------------- Painel
-    _c("PAINEL_CHAT_MAX_POR_HORA", "Painel", "numero", "Chamadas do chat por hora", "python",
+    _c("PAINEL_CHAT_MAX_POR_HORA", "Painel", "numero", "Chamadas do chat por hora", "painel",
        "O painel divide a janela de uso com a classificação diária.", minimo=1, maximo=200),
-    _c("PAINEL_CHAT_ESPERA_S", "Painel", "numero", "Espera na fila (s)", "python",
+    _c("PAINEL_CHAT_ESPERA_S", "Painel", "numero", "Espera na fila (s)", "painel",
        "Não é timeout do modelo — esse é o SINTESE_TIMEOUT.", minimo=5, maximo=900),
-    _c("PAINEL_HOSTS", "Painel", "lista", "Nomes aceitos no cabeçalho Host", "python",
+    _c("PAINEL_HOSTS", "Painel", "lista", "Nomes aceitos no cabeçalho Host", "painel",
        "Loopback, o endereço de bind e o hostname já entram sozinhos. Use para nome "
        "completo de MagicDNS ou domínio de proxy."),
-    _c("PAINEL_TOKEN", "Painel", "segredo", "Token de acesso ao painel", "python",
+    _c("PAINEL_TOKEN", "Painel", "segredo", "Token de acesso ao painel", "painel",
        "Vazio = sem autenticação, e o painel só sobe em 127.0.0.1. Preenchido, ele "
        "pede o token e guarda sessão em cookie. Vale ao reiniciar o painel."),
     # ---------------------------------------------------------------- Temas
