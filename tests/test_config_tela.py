@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from dlb import compose, env_io, painel_schema
+from dlb import acoes, compose, env_io, painel_schema
 from dlb.painel_schema import CONFIG_SCHEMA, Invalido, POR_CHAVE
 
 from tests.test_painel import PainelCase
@@ -488,6 +488,131 @@ class TestTelaDeConfig(PainelCase):
         """A API é a mesma fronteira da tela: segredo não sai por nenhuma das duas."""
         dados = json.loads(self.pegar("/api/config")[2])
         self.assertNotIn("segredo-de-verdade", json.dumps(dados))
+
+
+class TestAcoesNaTela(PainelCase):
+    """As ações pelo HTTP: mesma fronteira de mutação da configuração."""
+
+    def setUp(self):
+        super().setUp()
+        (self.root / ".env").write_text("DISCORD_TOKEN=x\n", encoding="utf-8")
+        from tests.test_vault import note
+
+        self.nota = self.vault.write_link_note(
+            "estudos", note("https://e.com/a", "Relays", ["Nostr"])
+        ).path.stem
+        self.rodou = []
+        self._rodar = acoes.rodar
+        acoes.rodar = lambda cfg, comando, timeout=None: (
+            self.rodou.append(comando),
+            acoes.Execucao(comando, True, 0, "pronto"),
+        )[1]
+
+    def tearDown(self):
+        acoes.rodar = self._rodar
+        super().tearDown()
+
+    def csrf(self):
+        _, _, html = self.pegar("/acervo")
+        marca = 'name=csrf value="'
+        inicio = html.index(marca) + len(marca)
+        return html[inicio : html.index('"', inicio)]
+
+    def postar(self, rota, campos, cabecalhos=None, csrf=True):
+        dados = dict(campos)
+        if csrf:
+            dados["csrf"] = self.csrf()
+        corpo = urllib.parse.urlencode(dados).encode("utf-8")
+        pedido = urllib.request.Request(
+            self.base + rota, data=corpo, method="POST", headers=cabecalhos or {}
+        )
+        try:
+            with urllib.request.urlopen(pedido, timeout=10) as resposta:
+                return resposta.status, resposta.read().decode("utf-8")
+        except urllib.error.HTTPError as erro:
+            return erro.code, erro.read().decode("utf-8")
+
+    def test_a_tabela_do_acervo_tem_o_controle_de_triagem(self):
+        _, _, html = self.pegar("/acervo")
+        self.assertIn('action="/acervo/triar"', html)
+        for opcao in ("inbox", "lido", "aplicado", "descartado"):
+            self.assertIn(f'<option value="{opcao}"', html)
+
+    def test_triar_pela_tela_grava_e_avisa(self):
+        codigo, html = self.postar("/acervo/triar", {"nota": self.nota, "para": "aplicado"})
+        self.assertEqual(codigo, 200)          # 303 seguido
+        self.assertIn("triagem", html)
+        self.assertIn("aplicado", html)
+        from dlb.corpus import ler_links
+
+        self.assertEqual(ler_links(self.root)[0].triagem, "aplicado")
+
+    def test_triar_volta_para_a_tela_de_onde_veio(self):
+        """Triar do chat volta para o chat; do acervo, para o acervo — com o filtro
+        que estava aplicado. Voltar sempre para a home perderia o contexto."""
+        _, html = self.postar(
+            "/acervo/triar", {"nota": self.nota, "para": "lido", "volta": "/chat"}
+        )
+        self.assertIn("Chat sobre o acervo", html)
+
+    def test_triar_sem_csrf_e_403_e_nao_grava(self):
+        codigo, _ = self.postar(
+            "/acervo/triar", {"nota": self.nota, "para": "descartado"}, csrf=False
+        )
+        self.assertEqual(codigo, 403)
+        from dlb.corpus import ler_links
+
+        self.assertEqual(ler_links(self.root)[0].triagem, "inbox")
+
+    def test_triar_de_outra_origem_e_403(self):
+        codigo, _ = self.postar(
+            "/acervo/triar", {"nota": self.nota, "para": "lido"},
+            cabecalhos={"Origin": "http://mau.exemplo"},
+        )
+        self.assertEqual(codigo, 403)
+
+    def test_nota_inexistente_vira_aviso_e_nao_500(self):
+        """Recusa é resposta, não erro: o painel diz o motivo e segue."""
+        codigo, html = self.postar("/acervo/triar", {"nota": "não existe", "para": "lido"})
+        self.assertEqual(codigo, 200)
+        self.assertIn("não achei a nota", html)
+
+    def test_fuga_de_diretorio_pela_url_e_recusada(self):
+        codigo, html = self.postar(
+            "/acervo/triar", {"nota": "../../.ssh/id_rsa", "para": "lido"}
+        )
+        self.assertEqual(codigo, 200)
+        self.assertIn("inválido", html)
+
+    def test_execucoes_tem_os_quatro_botoes(self):
+        _, _, html = self.pegar("/execucoes")
+        self.assertIn('action="/executar"', html)
+        for comando in ("sync", "backfill", "sintese", "temas"):
+            self.assertIn(f'value="{comando}"', html)
+
+    def test_disparar_comando_pela_tela(self):
+        codigo, html = self.postar("/executar", {"comando": "sync"})
+        self.assertEqual(codigo, 200)
+        self.assertEqual(self.rodou, ["sync"])
+        self.assertIn("sync terminou", html)
+
+    def test_comando_recusado_pelo_lock_aparece_como_atencao(self):
+        acoes.rodar = lambda cfg, comando, timeout=None: acoes.Execucao(
+            comando, False, 3, "Recusado: sync já está rodando", recusado=True
+        )
+        _, html = self.postar("/executar", {"comando": "sync"})
+        self.assertIn("faixa-atencao", html)
+        self.assertIn("está com o lock", html)
+
+    def test_comando_fora_da_lista_branca_nao_roda(self):
+        acoes.rodar = self._rodar          # o de verdade, que tem a lista branca
+        _, html = self.postar("/executar", {"comando": "ressurgir"})
+        self.assertIn("não é permitido", html)
+
+    def test_disparar_sem_csrf_e_403(self):
+        codigo, _ = self.postar("/executar", {"comando": "sync"}, csrf=False)
+        self.assertEqual(codigo, 403)
+        self.assertEqual(self.rodou, [])
 
 
 if __name__ == "__main__":

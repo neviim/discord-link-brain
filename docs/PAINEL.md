@@ -202,10 +202,34 @@ A tela abre. O leitor ignora linha que não parseia, a tela avisa o que encontro
 estranho (chave repetida, por exemplo) e o resto continua editável. Um painel que
 estourasse com `.env` inválido seria inútil exatamente quando é mais necessário.
 
-## O que o painel ainda não escreve
+## As duas ações
 
-O **vault** — nenhuma nota é criada ou editada pelo painel. Triagem pela interface
-e ações do chat são a fase seguinte. Botão só entra junto da fronteira de mutação (checagem de
+**Triar uma nota.** A tabela do acervo tem um seletor por linha, e o chat oferece as
+notas que citou. É a única coisa que o painel escreve no vault — e escreve trocando
+**uma linha** do frontmatter, não recompondo o arquivo. Tudo o mais sai byte a byte
+igual: a ordem que você deixou, as relações que acrescentou à mão, e tudo abaixo de
+`## Minhas notas`. Há teste comparando o arquivo inteiro antes e depois e exigindo
+que as únicas linhas diferentes sejam `triagem:` e `atualizado:`.
+
+Voltar para `inbox` funciona pela tabela, mas o chat não oferece: desfazer triagem é
+decisão de quem triou, não sugestão de ferramenta.
+
+**Rodar um comando.** Quatro botões em Execuções: `sync`, `backfill`, `sintese`,
+`temas`. Dispara `python3 -m dlb <comando>` em subprocess — o **mesmo** caminho do
+container e do terminal, então passa pelo mesmo `flock` e pelo mesmo journal.
+Chamar `cmd_sync()` direto seria um segundo caminho de execução, e o segundo caminho
+é sempre o que não tem proteção. Se outra execução estiver no ar, a sua sai com
+código 3 e a tela diz "recusado — outra execução está com o lock", em laranja e não
+em vermelho: é o sistema se protegendo.
+
+Fora da lista: `ressurgir` **posta no Discord**, que é a única ação irreversível do
+projeto; `responder` é laço infinito; `migrar` reescreve nota em massa. Nenhum tem
+botão, e a lista branca é travada por teste.
+
+O chat **oferece**; quem decide é o clique. A heurística das ofertas é
+deliberadamente boba — esforço em adivinhar melhor produziria sugestão mais
+convincente para uma decisão que não é da máquina. Um modelo marcando um link como
+`descartado` apagaria julgamento humano, e `descartado` é estado terminal. Botão só entra junto da fronteira de mutação (checagem de
 `Origin`, CSRF, token), e não antes — senão existiria uma janela com botão e sem
 guarda.
 
