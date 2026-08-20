@@ -143,7 +143,6 @@ def cmd_sync(cfg: Config, args: argparse.Namespace) -> int:
     # MOC e índice só são tocados quando existe nota nova para registrar. Sem
     # link novo, a execução não encosta no vault.
     estado = {"moc_pronto": False, "arquivadas": None}
-    guilds: dict[str, str | None] = {}
 
     def preparar_moc() -> None:
         if estado["moc_pronto"]:
@@ -298,6 +297,7 @@ def cmd_backfill(cfg: Config, args: argparse.Namespace) -> int:
     client = DiscordClient(cfg.auth_header)
     store = Store(cfg.state_dir)
     vault = Vault(cfg.vault_path, dry_run=args.dry_run)
+    guilds: dict[str, str | None] = {}
 
     if args.dry_run:
         _log("MODO SECO — nada será escrito no vault.\n")

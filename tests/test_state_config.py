@@ -283,6 +283,27 @@ class TestEnvExampleNaoFicaParaTras(unittest.TestCase):
             f"variáveis lidas pelo código e ausentes do .env.example: {faltando}",
         )
 
+    def test_nenhuma_chave_aparece_duas_vezes_no_exemplo(self):
+        """Chave repetida no exemplo é default mentindo, não desarrumação.
+
+        `load_dotenv` usa `os.environ.setdefault`, então em `.env` a **primeira**
+        ocorrência ganha e a segunda não avisa nada. Este teste existe porque o
+        buraco aconteceu: `DISCORD_POST_ENABLED` estava duas vezes, `=1` na linha
+        15 e `=0` na 118 — quem copiasse o exemplo saía com o bot autorizado a
+        postar, o oposto do default que o comentário da segunda linha explica.
+        """
+        raiz = Path(__file__).resolve().parent.parent
+        chaves = re.findall(
+            r"^([A-Z][A-Z0-9_]*)=",
+            (raiz / ".env.example").read_text(encoding="utf-8"),
+            re.M,
+        )
+        repetidas = sorted({k for k in chaves if chaves.count(k) > 1})
+        self.assertEqual(
+            repetidas, [],
+            f"chaves duplicadas no .env.example (a primeira ganha, em silêncio): {repetidas}",
+        )
+
     def test_toda_variavel_lida_esta_documentada(self):
         raiz = Path(__file__).resolve().parent.parent
         codigo = (raiz / "dlb" / "config.py").read_text(encoding="utf-8")

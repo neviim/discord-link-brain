@@ -30,7 +30,7 @@ arquivo, linha e o que era esperado.
 | `test_nota_de_link.py` | 35 | **o contrato com o ESQUEMA**: vocabulário fechado, nome de arquivo, o que `--force` preserva |
 | `test_vault.py` | 32 | as quatro camadas, imutabilidade, idempotência do lote posterior, autoridade do dedup |
 | `test_cli.py` | 30 | **a orquestração**: o parser, a semana ISO, a guarda de postar, e o fio entre comando e módulo |
-| `test_state_config.py` | 29 | os dois cursores, `.env` vs ambiente, as marcas, e o `.env.example` não ficar para trás |
+| `test_state_config.py` | 30 | os dois cursores, `.env` vs ambiente, as marcas, e o `.env.example` não ficar para trás |
 | `test_responder.py` | 28 | **o bot falando em público**: nunca duas vezes, nunca a si mesmo, marca só depois de postar |
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
@@ -42,7 +42,8 @@ arquivo, linha e o que era esperado.
 | `test_enrich_rede.py` | 17 | **a superfície hostil**: página que não abre, 50 MB de nada, encoding errado, teto de bytes |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
-| **total** | **460** | 84% das linhas de `dlb/` |
+| `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
+| **total** | **465** | 86% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -75,8 +76,8 @@ dlb/responder.py       89%
 dlb/discord_client.py  88%
 dlb/classify.py        72%
 dlb/sintese.py         68%   ← o que falta é caminho de subprocess
-dlb/cli.py             57%   ← falta backfill/doctor/laço; ver DECISOES.md
-TOTAL                  84%
+dlb/cli.py             68%   ← falta doctor/laço; ver DECISOES.md
+TOTAL                  86%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que

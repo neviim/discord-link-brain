@@ -585,9 +585,12 @@ com outra tolerância.
 
 ## O que ainda não foi resolvido
 
-- **`cli.py` testado pela metade** (1041 linhas, 57%). `sync` tem teste de ponta
-  a ponta com dublês — inclusive a ordem escreve-depois-marca, que é onde link
-  some em silêncio. Faltam `backfill`, `doctor` e o laço do `responder`.
+- **`cli.py` testado pela metade** (1041 linhas, 68%). `sync` e `backfill` têm
+  teste de ponta a ponta com dublês — inclusive a ordem escreve-depois-marca, que
+  é onde link some em silêncio. Faltam `doctor` e o laço do `responder`.
+  O `backfill` entrou depois de custar um `NameError` em produção: ele lia
+  `guilds`, atribuída só dentro de `cmd_sync`, e nenhum teste chegava ao corpo do
+  laço para descobrir. Cobertura de despacho não é cobertura de miolo.
 - **Os runners de subprocess** (`classify`, `sintese`) ficam em ~70%: o que falta
   é encanamento de `subprocess`, e dublá-lo testaria o dublê.
 - **Cloudflare e X/Twitter** continuam bloqueando a leitura. O link entra com
