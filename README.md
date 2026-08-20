@@ -150,6 +150,12 @@ python3 -m dlb buscar "o que eu salvei sobre agentes de IA?"
 python3 -m dlb ressurgir --dry-run
 python3 -m dlb temas
 
+# vigia o canal e responde `?buscar` postado no Discord (laço contínuo)
+python3 -m dlb responder
+
+# recupera histórico antigo em fatias (ver docs/OPERACAO.md#recuperar-o-histórico)
+python3 -m dlb backfill --days 2
+
 # ver o que faria sem escrever nada
 python3 -m dlb sync --since 3 --dry-run
 
@@ -184,7 +190,7 @@ Depois de um `sync`, o índice do Obsidian tem latência — rode
 python3 -m unittest discover -s tests -t .   # no host, só precisa de PyYAML
 ```
 
-113 testes, 55% de cobertura das linhas de `dlb/`. Nenhum toca a rede, o Discord
+811 testes, 89% de cobertura das linhas de `dlb/`. Nenhum toca a rede, o Discord
 ou o vault real. O mapa de o-que-cobre-o-quê e como medir cobertura estão em
 [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 
