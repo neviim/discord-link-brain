@@ -13,6 +13,10 @@
 #   systemctl --user enable --now dlb-painel
 #   systemctl --user status dlb-painel
 #
+# Não é "uma linha": o arquivo vive no repositório e precisa ser **copiado** para
+# `~/.config/systemd/user/`. Sem a cópia, `systemctl --user restart dlb-painel`
+# responde `Unit dlb-painel.service not found`.
+#
 # Para o painel continuar de pé depois de você sair da sessão:
 #
 #   sudo loginctl enable-linger "$USER"
@@ -26,11 +30,21 @@ Documentation=file:%h/Developer/discord-link-brain/docs/PAINEL.md
 # O painel lê o vault e fala com o docker, mas não depende deles para subir: ele
 # existe justamente para mostrar que algo está errado quando está.
 After=network-online.target
+# `tailscaled` é serviço de sistema; um serviço de usuário não pode declarar
+# dependência dura dele. `After` sem `Requires` só ordena quando os dois existem,
+# e o `ExecStart` abaixo já trata o caso de a tailnet ainda não estar de pé.
+After=tailscaled.service
 
 [Service]
 Type=simple
 WorkingDirectory=%h/Developer/discord-link-brain
-ExecStart=/usr/bin/python3 -m dlb painel --porta 8765
+# Liga no IP da tailnet quando ele existe, e cai para loopback quando não —
+# no boot o `tailscaled` pode ainda não ter endereço. Sem esse fallback, um
+# `--host ""` viraria bind em todas as interfaces, que é pior que loopback.
+#
+# `sh -c` porque systemd não faz substituição de comando; o `exec` evita deixar
+# um shell de pai vivo, para o SIGTERM chegar direto no Python.
+ExecStart=/bin/sh -c 'IP="$(tailscale ip -4 2>/dev/null | head -1)"; exec /usr/bin/python3 -m dlb painel --host "${IP:-127.0.0.1}" --porta 8765'
 
 # `SIGTERM` é o que o `systemctl stop` manda, e o painel o trata: fecha o run no
 # journal em vez de deixá-lo eternamente "rodando".

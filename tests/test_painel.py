@@ -677,6 +677,20 @@ class TestServicoSystemd(unittest.TestCase):
     def test_roda_o_comando_do_painel(self):
         self.assertIn("-m dlb painel", self.unidade())
 
+    def test_liga_na_tailnet_com_fallback_para_loopback(self):
+        """No boot o `tailscaled` pode ainda não ter endereço. Sem fallback, um
+        `--host ""` viraria bind em **todas** as interfaces, que é pior que
+        loopback."""
+        unidade = self.unidade()
+        self.assertIn("tailscale ip -4", unidade)
+        self.assertIn('${IP:-127.0.0.1}', unidade)
+
+    def test_usa_exec_para_o_sigterm_chegar_no_python(self):
+        """Sem `exec`, o `sh -c` fica como pai e o SIGTERM do `systemctl stop`
+        morre nele — o run do painel ficaria eternamente "rodando" no journal,
+        que é justamente o que o tratador de sinal existe para evitar."""
+        self.assertIn("exec /usr/bin/python3", self.unidade())
+
     def test_reinicia_so_em_falha(self):
         """`Restart=always` reiniciaria em laço um painel que não consegue subir —
         por exemplo com a porta ocupada — enchendo o journal."""
