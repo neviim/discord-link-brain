@@ -130,6 +130,20 @@ class TestDivergencias(unittest.TestCase):
         )
         self.assertEqual(fora[0]["arquivo"], "Europe/Lisbon")
 
+    def test_chave_sobrescrita_pelo_compose_nunca_e_divergencia(self):
+        """`OBSIDIAN_VAULT` é `/vault` dentro do container por bind mount, sempre.
+        Compará-la deixaria uma linha de "pendente" que nunca sai da tela — e o
+        painel que sempre tem algo a mostrar é o painel que ninguém olha.
+        Apareceu no primeiro teste contra o container de produção."""
+        self.assertEqual(
+            compose.divergencias(
+                {"OBSIDIAN_VAULT": "~/Documents/vault"},
+                {"OBSIDIAN_VAULT": "/vault"},
+                ("OBSIDIAN_VAULT",),
+            ),
+            [],
+        )
+
     def test_espaco_conta_como_diferenca(self):
         """`6` e `6 ` são diferentes para o shell. Normalizar aqui esconderia
         justamente o defeito que a função existe para expor."""

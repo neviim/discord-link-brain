@@ -32,9 +32,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import agenda, chat as chat_mod, compose, env_io, gestor, journal, painel_schema
+from . import acoes, agenda, chat as chat_mod, compose, env_io, gestor, journal, painel_schema
 from .acervo import Acervo, filtrar, resumo
 from .config import Config
+from .models import TRIAGENS
 from .render import Raw, juntar, lista, pagina, substituir, tabela
 
 ESTATICOS = Path(__file__).parent / "static"
@@ -244,6 +245,15 @@ class Estado:
             "pendentes": pendentes,
             "tem_backup": bool(env_io.tem_backup(self.cfg.env_path)),
         }
+
+    def pegar_aviso(self) -> Raw:
+        """Devolve e **limpa** a faixa do último POST.
+
+        Consumir na leitura é o que faz o POST-redirect-GET funcionar: a mensagem
+        aparece uma vez, na tela para onde a ação levou, e não fica grudada.
+        """
+        aviso, self.ultimo_aviso = self.ultimo_aviso, Raw("")
+        return aviso
 
     def com_alertas(self) -> dict:
         """A visão mais o que as oito regras do gestor concluíram sobre ela.
@@ -482,8 +492,32 @@ def _view_execucoes(estado: Estado, consulta: dict) -> str:
         """<h1>Execuções</h1>
 <p class=detalhe>Uma linha por run, do mais recente para o mais antigo. Vem de
 <code>.state/runs/</code> — não do log do Docker, que rotaciona.</p>
+$aviso
+<h2>Rodar agora</h2>
+<p class=detalhe>Dispara <code>python3 -m dlb &lt;comando&gt;</code> — o mesmo caminho
+do container, então passa pelo mesmo lock. Se outra execução estiver no ar, a sua é
+recusada em vez de corromper o cursor.</p>
+<div class=acoes>$botoes</div>
 <nav class=filtros>$filtros</nav>
 $tabela""",
+        aviso=estado.pegar_aviso(),
+        botoes=juntar(
+            [
+                substituir(
+                    """<form method=post action="/executar">
+  <input type=hidden name=csrf value="$csrf">
+  <input type=hidden name=comando value="$comando">
+  <input type=hidden name=volta value="/execucoes">
+  <button type=submit class=secundario title="$ajuda">$comando</button>
+</form>""",
+                    csrf=estado.csrf,
+                    comando=nome,
+                    ajuda=ajuda,
+                )
+                for nome, ajuda in acoes.COMANDOS.items()
+            ],
+            "",
+        ),
         filtros=filtros,
         tabela=_tabela_execucoes(runs),
     )
@@ -865,6 +899,41 @@ $desfazer""",
     return pagina("Configuração", corpo, ativo="/config", vault=str(estado.cfg.vault_path))
 
 
+_TRIAR = """<form method=post action="/acervo/triar" class=triar>
+  <input type=hidden name=csrf value="$csrf">
+  <input type=hidden name=nota value="$nota">
+  <input type=hidden name=volta value="$volta">
+  <select name=para aria-label="triagem de $nota">$opcoes</select>
+  <button type=submit>ok</button>
+</form>"""
+
+
+def _form_triagem(estado: Estado, nome: str, atual: str, volta: str) -> Raw:
+    """O controle que grava julgamento humano — o único que escreve no vault.
+
+    As quatro opções vêm de `models.TRIAGENS`, que é o vocabulário do `ESQUEMA` do
+    vault. A atual aparece selecionada, e mandar a mesma é recusado com mensagem em
+    vez de reescrever o arquivo por nada.
+    """
+    return substituir(
+        _TRIAR,
+        csrf=estado.csrf,
+        nota=nome,
+        volta=volta,
+        opcoes=juntar(
+            [
+                substituir(
+                    '<option value="$v"$sel>$v</option>',
+                    v=opcao,
+                    sel=Raw(" selected") if opcao == (atual or "inbox") else "",
+                )
+                for opcao in TRIAGENS
+            ],
+            "",
+        ),
+    )
+
+
 def _view_acervo(estado: Estado, consulta: dict) -> str:
     def um(nome: str) -> str:
         return (consulta.get(nome) or [""])[0].strip()
@@ -888,13 +957,16 @@ def _view_acervo(estado: Estado, consulta: dict) -> str:
         " ",
     )
 
+    volta = "/acervo" + (f"?q={termo}" if termo else "") + (
+        ("&" if termo else "?") + f"triagem={triagem}" if triagem else ""
+    )
     linhas = [
         [
             e.dia or "—",
             substituir('<a href="$url" rel="noreferrer noopener">$titulo</a>', url=e.url, titulo=e.titulo or e.nome),
             e.dominio,
             e.categoria,
-            e.triagem or "sem",
+            _form_triagem(estado, e.nome, e.triagem, volta),
             "—" if e.nota is None else e.nota,
         ]
         for e in reversed(achados[-300:])
@@ -904,6 +976,7 @@ def _view_acervo(estado: Estado, consulta: dict) -> str:
         """<h1>Acervo</h1>
 <p class=detalhe>$total notas em <code>50_LINKS/</code>. O vault é a verdade: isto
 é leitura sob demanda, sem índice em banco.</p>
+$aviso
 <form method=get action="/acervo" class=busca>
   <input type=search name=q value="$termo" placeholder="título, resumo, domínio, conceito…">
   <input type=hidden name=triagem value="$triagem">
@@ -913,6 +986,7 @@ def _view_acervo(estado: Estado, consulta: dict) -> str:
 <p class=detalhe>$quantos</p>
 $tabela""",
         total=dados["total"],
+        aviso=estado.pegar_aviso(),
         termo=termo,
         triagem=triagem,
         facetas=facetas,
@@ -921,7 +995,7 @@ $tabela""",
             + (" · mostrando as 300 mais recentes" if len(achados) > 300 else "")
         ),
         tabela=tabela(
-            ["dia", "título", "domínio", "categoria", "triagem", "nota"],
+            ["dia", "título", "domínio", "categoria", "triagem (edita)", "nota"],
             linhas,
             vazio="Nenhuma nota com esse filtro.",
         ),
@@ -976,7 +1050,13 @@ class Handler(BaseHTTPRequestHandler):
         depois de ler um corpo sem teto já teria deixado alguém prender memória.
         """
         rota = urlparse(self.path).path.rstrip("/") or "/"
-        if rota not in {"/config/salvar", "/config/aplicar", "/config/desfazer"}:
+        if rota not in {
+            "/config/salvar",
+            "/config/aplicar",
+            "/config/desfazer",
+            "/acervo/triar",
+            "/executar",
+        }:
             self._metodo_nao_permitido()
             return
         try:
@@ -997,8 +1077,24 @@ class Handler(BaseHTTPRequestHandler):
                 self._salvar(campos)
             elif rota == "/config/aplicar":
                 self._aplicar()
-            else:
+            elif rota == "/config/desfazer":
                 self._desfazer()
+            elif rota == "/acervo/triar":
+                self._triar(campos)
+                self._redirecionar(campos.get("volta") or "/acervo")
+                return
+            else:
+                self._executar(campos)
+                self._redirecionar(campos.get("volta") or "/execucoes")
+                return
+        except acoes.Recusado as exc:
+            # Recusa é resposta, não erro: nome de nota que não existe, triagem
+            # que já é a atual, comando fora da lista branca.
+            self.estado.ultimo_aviso = substituir(
+                "<article class='faixa faixa-atencao'><p>$erro</p></article>", erro=str(exc)
+            )
+            self._redirecionar(campos.get("volta") or "/acervo")
+            return
         except Exception as exc:  # noqa: BLE001
             self.log_message("erro em %s: %s: %s", rota, type(exc).__name__, exc)
             self.estado.ultimo_aviso = substituir(
@@ -1124,8 +1220,7 @@ class Handler(BaseHTTPRequestHandler):
             elif rota == "/agenda":
                 self._html(_view_agenda(self.estado), corpo)
             elif rota == "/config":
-                aviso, self.estado.ultimo_aviso = self.estado.ultimo_aviso, Raw("")
-                self._html(_view_config(self.estado, aviso=aviso), corpo)
+                self._html(_view_config(self.estado, aviso=self.estado.pegar_aviso()), corpo)
             elif rota == "/api/config":
                 self._json(self.estado.config(), corpo)
             elif rota == "/chat":
@@ -1190,6 +1285,44 @@ class Handler(BaseHTTPRequestHandler):
                 "resposta": registro.como_dict() if registro else None,
             },
             corpo,
+        )
+
+    def _triar(self, campos: dict) -> None:
+        estado = self.estado
+        resultado = acoes.triar(estado.cfg, campos.get("nota", ""), campos.get("para", ""))
+        # O memo do acervo é por `(mtime_ns, size)`: a nota mudou, então a próxima
+        # leitura relê **só ela**. Não precisa invalidar nada à mão.
+        estado.ultimo_aviso = substituir(
+            "<article class='faixa faixa-info'><p><strong>$nota</strong>: "
+            "triagem <code>$de</code> → <code>$para</code>. Já está no arquivo do vault; "
+            "recarregue no Obsidian para ver.</p></article>",
+            nota=resultado.nota,
+            de=resultado.de,
+            para=resultado.para,
+        )
+
+    def _executar(self, campos: dict) -> None:
+        estado = self.estado
+        comando = (campos.get("comando") or "").strip()
+        resultado = acoes.rodar(estado.cfg, comando)
+        tom = "info" if resultado.ok else ("atencao" if resultado.recusado else "alerta")
+        titulo = (
+            f"{comando} terminou"
+            if resultado.ok
+            else (f"{comando} foi recusado — outra execução está com o lock"
+                  if resultado.recusado
+                  else f"{comando} falhou")
+        )
+        estado.ultimo_aviso = substituir(
+            """<article class='faixa faixa-$tom'>
+  <h3>$titulo</h3>
+  <p class=evidencia>código $codigo</p>
+  <pre class=saida>$saida</pre>
+</article>""",
+            tom=tom,
+            titulo=titulo,
+            codigo="—" if resultado.codigo is None else resultado.codigo,
+            saida=resultado.saida,
         )
 
     def _api_acervo(self, consulta: dict, corpo: bool) -> None:

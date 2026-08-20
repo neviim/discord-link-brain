@@ -93,6 +93,20 @@ def inspecionar(container: str = CONTAINER_PADRAO) -> dict | None:
 # painel.
 ALIAS = {"TZ": "TIMEZONE"}
 
+# Chaves que o compose **sobrescreve de propósito** dentro do container, então o
+# arquivo e o container discordam para sempre e isso é o desenho funcionando:
+#
+#   OBSIDIAN_VAULT: /vault   (o vault entra por bind mount; o caminho do host não
+#                             existe lá dentro)
+#
+# Compará-las produziria uma linha de "pendente" que nunca sai da tela — e alarme
+# falso permanente é como se ensina alguém a ignorar o painel. Apareceu no primeiro
+# teste contra o container de verdade.
+#
+# Para comandos rodados **no host** o valor do arquivo continua valendo, e vale já
+# na próxima execução: é o que o texto de ajuda do campo diz.
+SOBRESCRITAS_PELO_COMPOSE = {"OBSIDIAN_VAULT"}
+
 
 def divergencias(
     arquivo: Mapping[str, str],
@@ -112,6 +126,8 @@ def divergencias(
     alias = ALIAS if alias is None else alias
     fora: list[dict] = []
     for chave in chaves:
+        if chave in SOBRESCRITAS_PELO_COMPOSE:
+            continue
         no_arquivo = (arquivo.get(chave) or arquivo.get(alias.get(chave, chave)) or "").strip()
         no_container = (container.get(chave) or "").strip()
         if no_arquivo != no_container:
