@@ -27,6 +27,7 @@ import hmac
 import json
 import secrets
 import signal
+import socket
 import threading
 import time
 from datetime import datetime, timezone
@@ -128,6 +129,30 @@ class Estado:
     @property
     def exige_token(self) -> bool:
         return bool(self.cfg.painel_token)
+
+    def hosts_aceitos(self, endereco_de_bind: str = "") -> set[str]:
+        """Nomes que este painel responde. Fora deles, 421.
+
+        Três origens, e nenhuma é adivinhação:
+
+        - **loopback e o endereço de bind** — o que o próprio servidor atende;
+        - **o hostname da máquina** — é o que se digita numa tailnet com MagicDNS
+          (`http://dotcom:8765`), e um atacante não controla esse nome, então
+          aceitá-lo não abre o caminho de rebinding;
+        - **`PAINEL_HOSTS`** — para nome completo de MagicDNS ou domínio de proxy,
+          declarado por quem opera em vez de deduzido por mim.
+        """
+        aceitos = set(LOOPBACK) | {"0.0.0.0", "[::]"}
+        if endereco_de_bind:
+            aceitos.add(str(endereco_de_bind).lower().strip("[]"))
+        for nome in (socket.gethostname(), socket.getfqdn()):
+            if nome:
+                aceitos.add(nome.lower().rstrip("."))
+        for extra in (self.cfg.painel_hosts or "").split(","):
+            limpo = extra.strip().lower().rstrip(".")
+            if limpo:
+                aceitos.add(limpo)
+        return aceitos
 
     def entrar(self, token: str) -> str | None:
         """Confere o token e abre sessão. `None` se não bateu.
@@ -1300,14 +1325,16 @@ class Handler(BaseHTTPRequestHandler):
             # HTTP/1.1 exige `Host`. Ausente é cliente estranho, não navegador.
             return False
         nome = bruto.rsplit(":", 1)[0].strip("[]") if ":" in bruto else bruto
+        # Ponto final é FQDN absoluto e legal no `Host`; `dotcom.ts.net.` e
+        # `dotcom.ts.net` são o mesmo nome, e tratá-los como diferentes daria 421
+        # em navegador que manda a forma absoluta.
+        nome = nome.rstrip(".")
         porta = bruto.rsplit(":", 1)[1] if ":" in bruto else ""
         if porta and porta != str(self.server.server_port):   # type: ignore[attr-defined]
             return False
-        aceitos = set(LOOPBACK) | {"0.0.0.0", "[::]"}
-        endereco = getattr(self.server, "server_address", ("", 0))[0]
-        if endereco:
-            aceitos.add(str(endereco).lower().strip("[]"))
-        return nome in aceitos
+        return nome in self.estado.hosts_aceitos(
+            getattr(self.server, "server_address", ("", 0))[0]
+        )
 
     def _origem_confiavel(self) -> bool:
         """`Origin` (ou `Referer`) tem de bater com o `Host` que atendeu.

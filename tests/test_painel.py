@@ -448,6 +448,27 @@ class TestFronteira(PainelCase):
                 self.assertEqual(codigo, 421)
                 self.assertIn("Host não atendido", corpo)
 
+    def test_o_hostname_da_maquina_passa(self):
+        """É o que se digita numa tailnet com MagicDNS: `http://dotcom:8765`.
+
+        Aceitar não abre rebinding: um atacante não controla esse nome. Recusar
+        quebraria o único jeito confortável de acessar de outra máquina.
+        """
+        import socket
+
+        self.assertEqual(
+            self.pegar("/", cabecalhos={"Host": socket.gethostname()})[0], 200
+        )
+
+    def test_nome_declarado_em_painel_hosts_passa(self):
+        """Nome completo de MagicDNS ou domínio de proxy: declarado por quem opera,
+        não deduzido."""
+        self.servidor.estado.cfg.painel_hosts = "dotcom.taile537f.ts.net, painel.local"
+        for host in ("dotcom.taile537f.ts.net", "painel.local", "DOTCOM.TAILE537F.TS.NET."):
+            with self.subTest(host):
+                self.assertEqual(self.pegar("/", cabecalhos={"Host": host})[0], 200)
+        self.assertEqual(self.pegar("/", cabecalhos={"Host": "outro.local"})[0], 421)
+
     def test_host_de_loopback_passa(self):
         for host in (f"127.0.0.1:{self.servidor.server_port}",
                      f"localhost:{self.servidor.server_port}"):

@@ -199,8 +199,28 @@ caminho de **DNS rebinding**: uma página em `evil.com` aponta o domínio para
 os dois batem entre si, a checagem de origem passaria, e a página, sendo mesma
 origem aos olhos do navegador, **leria a resposta** e com ela o token de CSRF.
 
-Só `127.0.0.1`, `localhost`, `::1` e o endereço de bind são aceitos, com a porta
-conferida.
+Aceitos: `127.0.0.1`, `localhost`, `::1`, o endereço de bind, **o hostname da
+máquina** e o que estiver em `PAINEL_HOSTS`. A porta é conferida.
+
+O hostname entra sozinho porque é o que se digita numa tailnet com MagicDNS
+(`http://dotcom:8765`), e um atacante não controla esse nome. O nome completo
+(`dotcom.taile537f.ts.net`) e domínio de proxy vão em `PAINEL_HOSTS`, declarados por
+quem opera em vez de deduzidos.
+
+### Acessar de outra máquina pela tailnet
+
+```bash
+# no .env
+PAINEL_TOKEN=<token forte>
+PAINEL_HOSTS=dotcom,dotcom.taile537f.ts.net
+
+# subir ligado só na interface da tailnet
+python3 -m dlb painel --host "$(tailscale ip -4)"
+```
+
+Da outra máquina: `http://dotcom:8765`. O tráfego é WireGuard, então o token não
+viaja em texto puro na rede mesmo sem TLS — é o único caso em que HTTP simples
+serve. Fora de uma rede já criptografada, proxy com TLS na frente.
 
 ### A fronteira de mutação
 
