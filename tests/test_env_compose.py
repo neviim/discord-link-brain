@@ -272,6 +272,42 @@ class TestAplicar(unittest.TestCase):
         self.assertIn("Recreated", resultado["saida"])
         self.assertEqual(resultado["comando"], "./dlb.sh prod up")
 
+    def test_o_ambiente_do_painel_nao_vaza_para_o_compose(self):
+        """O defeito que só apareceu rodando ao vivo.
+
+        `load_dotenv` faz `setdefault` no ambiente **do processo**, então o painel
+        carrega em si os valores que o `.env` tinha quando subiu. O subprocess
+        herda, e a interpolação do compose prefere shell a arquivo — o container
+        era recriado com o valor velho, com código 0 e a tela dizendo "recriado".
+        """
+        import os
+
+        (self.raiz / ".env").write_text(
+            "DLB_HEALTH_TOLERANCE=28800\nDISCORD_TOKEN=x\n", encoding="utf-8"
+        )
+        capturado = {}
+
+        def falso(cmd, **kwargs):
+            capturado.update(kwargs)
+            return subprocess.CompletedProcess(cmd, 0, "ok", "")
+
+        subprocess.run = falso
+        antigo = os.environ.get("DLB_HEALTH_TOLERANCE")
+        os.environ["DLB_HEALTH_TOLERANCE"] = "28801"      # como o painel ficaria
+        try:
+            compose.aplicar(self.raiz)
+        finally:
+            if antigo is None:
+                os.environ.pop("DLB_HEALTH_TOLERANCE", None)
+            else:
+                os.environ["DLB_HEALTH_TOLERANCE"] = antigo
+
+        ambiente = capturado["env"]
+        self.assertNotIn("DLB_HEALTH_TOLERANCE", ambiente)   # o compose lê do arquivo
+        self.assertNotIn("DISCORD_TOKEN", ambiente)
+        # E o que o wrapper precisa continua lá.
+        self.assertIn("PATH", ambiente)
+
     def test_usa_up_e_nunca_restart(self):
         """`restart` não relê o `.env`. Um botão que usasse restart não faria
         efeito e não avisaria — é o defeito que o painel existe para não repetir."""
