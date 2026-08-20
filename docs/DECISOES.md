@@ -583,11 +583,179 @@ com outra tolerância.
 
 ---
 
+## Histórico de execução: um diretório por run, não um arquivo de log
+
+**O problema:** o que o sistema fez ontem só existia no log do Docker. Ele
+rotaciona, não é consultável e some quando o container é recriado. Qualquer
+pergunta do tipo "rodou hoje?", "quantos links entraram na semana?" ou "por que
+não entrou nada de terça?" não tinha onde ser respondida.
+
+**Alternativa considerada:** um `runs.jsonl` com uma linha por execução. É o
+desenho óbvio e o errado aqui. O laço do container, um `sync` disparado à mão no
+host e (adiante) um run disparado pelo painel são **três processos anexando ao
+mesmo arquivo**. Escrita concorrente sem lock intercala linha, e o defeito
+aparece como "o histórico está estranho", meses depois, sem como reproduzir.
+
+    .state/runs/20260820T001503Z-sync-4127/summary.json
+
+Diretório por run torna a corrida **impossível por construção** em vez de
+administrada: um escritor por diretório, e o nome carrega o pid de quem escreve.
+É a mesma regra que `state.py` já aplica ao separar o cursor do `responder` do
+cursor do `sync`.
+
+O nome começa com o instante em ISO compacto, então ordenação lexicográfica é
+ordenação cronológica: listar as vinte últimas execuções não abre arquivo nenhum
+para decidir a ordem.
+
+Um diretório para um arquivo só parece exagero hoje. É o ponto: quando o passo a
+passo estruturado (`events.jsonl`) entrar, ele entra ao lado do `summary.json`
+sem migração e sem mudar quem lê o resumo.
+
+**Poda:** 500 runs, fixo no código. Quatro comandos por ciclo, quatro ciclos por
+dia passam de 5 mil diretórios por ano. Não é configurável de propósito — é
+detalhe do histórico, não política que alguém precise ajustar.
+
+**Desfazer custa:** nada externo depende do formato ainda. Trocar por banco
+custaria a reconciliação que a decisão do SQLite acima já descreve.
+
+---
+
+## O lock recusa em vez de esperar
+
+**O problema:** duas execuções de `sync` (ou `sync` e `backfill`) sobre o mesmo
+canal fazem read-modify-write no mesmo `.state/<canal>.json`. A atualização de
+uma se perde, e o efeito não é perder trabalho — é **um trecho do canal deixar de
+ser lido**, que a deduplicação por URL nunca recria, porque ela só sabe do que
+foi lido.
+
+Isto nunca aconteceu enquanto o único disparador era o laço do container, que é
+sequencial. Passa a poder acontecer no minuto em que existir um botão.
+
+`flock` em `.state/locks/canais.lock`, tomado dentro do `main()` — **não** no
+código que dispara job. Fosse no disparador, o `sync` do container não o tomaria,
+e a colisão que o lock existe para impedir seria exatamente a que passaria. É
+também o motivo de o painel disparar `python3 -m dlb sync` em subprocess em vez
+de chamar `cmd_sync()`: um só caminho, uma só proteção.
+
+**Recusa, não espera.** Um `sync` pode levar minutos; uma requisição de painel
+pendurada nisso parece travamento, e enfileirar dois syncs seguidos não vale nada
+— o segundo não teria o que ler. A recusa sai com código **3** (distinto de 1,
+que é falha de verdade) e a mensagem diz quem está com o lock e desde quando.
+
+O metadado em `canais.json` é conveniência, não autoridade: processo morto de
+`kill -9` deixa o arquivo para trás. A verdade é o `flock` — se ele está livre, o
+metadado é lixo. É assim que "rodando" se distingue de "morreu no meio" sem
+inventar timeout.
+
+`responder` fica fora do lock: cursor próprio, escritor próprio, e roda de 60 em
+60 segundos. Travá-lo junto do sync deixaria o bot mudo durante um sync longo, de
+graça.
+
+**Vale em bind mount local; não vale em NFS.** Se `.state` migrar para rede, este
+desenho quebra — o aviso está no topo de `dlb/journal.py`.
+
+**Desfazer custa:** nada. Remover o lock devolve o comportamento de hoje.
+
+---
+
+## O painel roda no host, e não dentro do container
+
+**Alternativa considerada:** um serviço a mais no `docker-compose.yml`, ao lado do
+`prod` e do `responder`. É o desenho que parece consistente com o resto — e o
+errado.
+
+O painel precisa poder disparar `docker compose up` (é o único jeito de aplicar
+`.env` novo — `restart` não relê, ver a decisão acima). De dentro de um container,
+isso exige montar `/var/run/docker.sock`, o que é **root no host**. Por um botão
+de conveniência, num processo que também vai ter chat de LLM lendo texto vindo da
+internet. O container é isolamento; furá-lo para ganhar comodidade troca a única
+garantia que ele dava.
+
+No host o painel é um processo comum, com o usuário do Dotcom, que já pode rodar
+`docker compose` porque é a máquina dele.
+
+**Desfazer custa:** o socket do Docker montado, ou um agente de execução separado
+com sua própria fronteira — mais peça do que o painel inteiro tem hoje.
+
+---
+
+## Índice derivado: permitido, com gatilho medido
+
+O painel lê `50_LINKS/` do disco a cada requisição, com memo por
+`(mtime_ns, size)` por arquivo. Sem índice. É o "passo certo antes do banco" que a
+decisão do SQLite acima já apontava.
+
+Números do acervo real (77 notas, 320 KB), medidos:
+
+| Operação | Tempo |
+|---|---|
+| `corpus.ler_links()` — parse de 77 notas | **105 ms** |
+| a mesma leitura pelo memo | **2,2 ms** |
+| uma nota editada no Obsidian | relê 1 de 77 |
+| página do painel inteira | ~3 ms |
+
+**O que a medição corrigiu:** a tabela do SQLite acima mede leitura de URLs de
+`10_FONTES/`, que é `1,7 ms` para 82 links. Ler o **acervo estruturado** é outra
+operação — parse de YAML por nota — e custa 105 ms para 77 notas, ~60× mais. O
+número da decisão antiga não vale para esta pergunta, e é o tipo de confusão que
+faria alguém concluir que sobra folga onde não sobra.
+
+Um índice em SQLite/FTS5 fica **permitido** — derivado, descartável,
+reconstruível a partir de `50_LINKS/`, nunca autoritativo, nunca guardando
+julgamento humano — quando **qualquer um** destes acontecer:
+
+1. `corpus.ler_links()` passar de **150 ms** no acervo real, medido; ou
+2. uma tela precisar de faceta ou paginação que o memo não sustente em um request; ou
+3. `doctor` mostrar o prompt de busca encostando em `BUSCA_MAX_CHARS`.
+
+Estamos a **65% do gatilho 1** com 77 notas. No ritmo de ~85 links/ano ele chega
+em uns dois anos — mas chega, e quando chegar a porta está aberta e documentada em
+vez de fechada por gosto.
+
+**Desfazer custa:** enquanto não existir, nada. Depois de existir, a rotina de
+reconciliação com o vault que a decisão do SQLite descreve.
+
+---
+
+## O gestor é regra, não agente
+
+O painel foi pedido com um "gestor" que orquestrasse e recomendasse o que olhar. A
+leitura fácil disso é um agente de LLM sobre o estado do sistema. Não é o que
+está aqui.
+
+As oito regras de `dlb/gestor.py` são comparação de número e de data — heartbeat
+contra tolerância, contagem de falhas consecutivas, tamanho da fila de triagem. Um
+modelo daria a mesma resposta com dezenas de segundos de latência e variação entre
+execuções, e não daria teste.
+
+O argumento que decide não é custo nem latência: **as regras funcionam quando o
+modelo está sem quota.** O painel é o terceiro consumidor do mesmo login `claude`
+/ `codex` (classificação, síntese, chat). O momento em que se abre o painel com
+mais urgência é justamente aquele em que a classificação diária falhou por falta
+de janela de uso — e um gestor que dependesse de modelo estaria mudo exatamente
+ali, ou pior, reportaria um erro que ele mesmo causou.
+
+A narração por LLM fica **opcional e por cima**: o modelo escreve em prosa um
+alerta que a regra já decidiu. A ordem importa e não é simetria — um narrador não
+pode inventar um problema, um decisor pode.
+
+Cada alerta carrega `evidencia` (o dado com número que o disparou) e `acao` (o
+comando ou a tela que resolve). Alerta sem evidência é palpite, e palpite ensina o
+leitor a ignorar o painel; alerta sem ação é ansiedade.
+
+**Desfazer custa:** nada — a narração é aditiva. Substituir as regras por um
+agente custaria a testabilidade inteira e a independência de quota.
+
+---
+
 ## O que ainda não foi resolvido
 
-- **`cli.py` testado pela metade** (1041 linhas, 57%). `sync` tem teste de ponta
-  a ponta com dublês — inclusive a ordem escreve-depois-marca, que é onde link
-  some em silêncio. Faltam `backfill`, `doctor` e o laço do `responder`.
+- **`cli.py` testado pela metade** (1041 linhas, 68%). `sync` e `backfill` têm
+  teste de ponta a ponta com dublês — inclusive a ordem escreve-depois-marca, que
+  é onde link some em silêncio. Faltam `doctor` e o laço do `responder`.
+  O `backfill` entrou depois de custar um `NameError` em produção: ele lia
+  `guilds`, atribuída só dentro de `cmd_sync`, e nenhum teste chegava ao corpo do
+  laço para descobrir. Cobertura de despacho não é cobertura de miolo.
 - **Os runners de subprocess** (`classify`, `sintese`) ficam em ~70%: o que falta
   é encanamento de `subprocess`, e dublá-lo testaria o dublê.
 - **Cloudflare e X/Twitter** continuam bloqueando a leitura. O link entra com

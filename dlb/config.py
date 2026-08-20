@@ -106,12 +106,31 @@ class Config:
     link_notes: bool = True
     state_dir: Path = PROJECT_ROOT / ".state"
 
+    # Contenção do chat do painel. O modelo roda por binário local já logado, e o
+    # painel é o terceiro consumidor da mesma janela de uso — depois da
+    # classificação diária e do responder. Se ele come a quota, a classificação da
+    # noite falha e o painel reporta um erro que ele mesmo causou.
+    painel_chat_max_por_hora: int = 20
+    painel_chat_espera_s: float = 120.0     # espera na fila, não timeout do modelo
+
+    # O painel precisa ler o **arquivo**, não o ambiente do processo:
+    # `from_env` usa `setdefault`, então `os.environ` é uma mistura de `.env` com
+    # o que já estava exportado no shell. Para a tela dizer "o arquivo diz X",
+    # ela tem de abrir X.
+    env_path: Path = PROJECT_ROOT / ".env"
+
     # Marca no Discord o que já virou nota. Ver README: marcar, nunca apagar.
     # Dois emojis porque são dois estados diferentes para quem olha o canal:
     # "esta captura entrou agora" e "isto você já tinha".
     mark_processed: bool = True
     processed_emoji: str = "✅"      # virou nota nesta execução
     duplicate_emoji: str = "📚"      # já estava documentado no Obsidian
+
+    # Quanto tempo sem heartbeat até considerar parado. Os mesmos valores que o
+    # healthcheck do container usa: o painel não pode ter uma opinião própria
+    # sobre "está vivo" e mostrar verde enquanto o Docker mostra `unhealthy`.
+    health_tolerance: int = 28800               # 8h — a grade padrão é de 6h
+    responder_health_tolerance: int = 300       # 5 min — a volta é de 60 em 60 s
 
     @property
     def auth_header(self) -> str:
@@ -194,6 +213,12 @@ class Config:
             ressurgir_resumo_max=int(os.environ.get("RESSURGIR_RESUMO_MAX", "220")),
             ressurgir_canal=os.environ.get("RESSURGIR_CANAL", ""),
             temas_limiar=int(os.environ.get("TEMAS_LIMIAR", "8")),
+            painel_chat_max_por_hora=int(os.environ.get("PAINEL_CHAT_MAX_POR_HORA", "20")),
+            painel_chat_espera_s=float(os.environ.get("PAINEL_CHAT_ESPERA_S", "120")),
+            health_tolerance=int(os.environ.get("DLB_HEALTH_TOLERANCE", "28800")),
+            responder_health_tolerance=int(
+                os.environ.get("DLB_RESPONDER_HEALTH_TOLERANCE", "300")
+            ),
             heartbeat_responder=os.environ.get("DLB_HEARTBEAT", "")
             if os.environ.get("DLB_MODE") == "responder"
             else os.environ.get("DLB_HEARTBEAT_RESPONDER", ""),

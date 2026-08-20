@@ -36,13 +36,14 @@ class TestParser(unittest.TestCase):
         )
         self.assertEqual(
             sorted(sub.choices),
-            ["backfill", "buscar", "doctor", "migrar", "responder",
+            ["backfill", "buscar", "doctor", "migrar", "painel", "responder",
              "ressurgir", "semana", "sintese", "sync", "temas"],
         )
 
     def test_cada_comando_tem_funcao_ligada(self):
         for nome in ("sync", "backfill", "migrar", "sintese", "buscar",
-                     "responder", "ressurgir", "temas", "semana", "doctor"):
+                     "responder", "ressurgir", "temas", "semana", "doctor",
+                     "painel"):
             with self.subTest(nome):
                 args = self.parser().parse_args([nome] + (["x"] if nome == "buscar" else []))
                 self.assertTrue(callable(args.func))

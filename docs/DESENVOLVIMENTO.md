@@ -24,16 +24,25 @@ arquivo, linha e o que era esperado.
 
 | Arquivo | Testes | Cobre |
 |---|---|---|
+| `test_gestor.py` | 37 | **as oito regras do gestor**: uma classe por regra, e cada uma prova que dispara *e* que fica calada |
+| `test_config_tela.py` | 52 | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, reparo do link da mensagem |
 | `test_ressurgir_temas.py` | 38 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, regeneração |
 | `test_nota_de_link.py` | 35 | **o contrato com o ESQUEMA**: vocabulário fechado, nome de arquivo, o que `--force` preserva |
 | `test_vault.py` | 32 | as quatro camadas, imutabilidade, idempotência do lote posterior, autoridade do dedup |
 | `test_cli.py` | 30 | **a orquestração**: o parser, a semana ISO, a guarda de postar, e o fio entre comando e módulo |
-| `test_state_config.py` | 29 | os dois cursores, `.env` vs ambiente, as marcas, e o `.env.example` não ficar para trás |
+| `test_state_config.py` | 30 | os dois cursores, `.env` vs ambiente, as marcas, e o `.env.example` não ficar para trás |
 | `test_responder.py` | 28 | **o bot falando em público**: nunca duas vezes, nunca a si mesmo, marca só depois de postar |
 | `test_classify.py` | 27 | **a fronteira do LLM**: resposta suja, vocabulário fechado, link pulado pelo modelo |
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
+| `test_agenda.py` | 27 | **a paridade com o `scheduler.sh`**: executa o Python embutido no shell e compara |
+| `test_journal.py` | 27 | **o histórico e o lock**: um escritor por run, recusa em vez de espera, e falha ≠ recusa |
+| `test_painel.py` | 44 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
+| `test_render.py` | 17 | **o escape por construção** — a condição da escolha de não usar Jinja |
+| `test_acervo.py` | 15 | o memo por `mtime`: editar no Obsidian relê **uma** nota, apagada sai do cache |
+| `test_env_compose.py` | 32 | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
+| `test_chat.py` | 18 | **a fila de um**: duas perguntas simultâneas não abrem dois `codex`, e o teto por hora sobrevive a reinício | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
 | `test_busca.py` | 21 | acento na pergunta, IDF, e **a URL vindo do acervo e não do modelo** |
 | `test_retry.py` | 21 | **a escada de 429/5xx**: esperar o certo, desistir na hora certa, e nunca mencionar ninguém |
@@ -42,7 +51,8 @@ arquivo, linha e o que era esperado.
 | `test_enrich_rede.py` | 17 | **a superfície hostil**: página que não abre, 50 MB de nada, encoding errado, teto de bytes |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
-| **total** | **460** | 84% das linhas de `dlb/` |
+| `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
+| **total** | **734** | 89% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.
@@ -60,6 +70,16 @@ Estado atual:
 
 ```
 dlb/config.py         100%
+dlb/chat.py           100%
+dlb/env_io.py          99%
+dlb/painel_schema.py   95%
+dlb/compose.py        100%
+dlb/render.py         100%
+dlb/agenda.py          99%
+dlb/gestor.py          99%
+dlb/journal.py         97%
+dlb/acervo.py          95%
+dlb/painel.py          92%
 dlb/ressurgir.py      100%
 dlb/state.py          100%
 dlb/extract.py         98%
@@ -75,8 +95,8 @@ dlb/responder.py       89%
 dlb/discord_client.py  88%
 dlb/classify.py        72%
 dlb/sintese.py         68%   ← o que falta é caminho de subprocess
-dlb/cli.py             57%   ← falta backfill/doctor/laço; ver DECISOES.md
-TOTAL                  84%
+dlb/cli.py             68%   ← falta doctor/laço; ver DECISOES.md
+TOTAL                  89%
 ```
 
 Use `--source=dlb`, não o padrão: sem isso o coverage só reporta módulos que
