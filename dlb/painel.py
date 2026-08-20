@@ -1198,6 +1198,9 @@ class Handler(BaseHTTPRequestHandler):
         depois de ler um corpo sem teto já teria deixado alguém prender memória.
         """
         rota = urlparse(self.path).path.rstrip("/") or "/"
+        if not self._host_esperado():
+            self._json({"erro": "Host não atendido por este painel"}, True, codigo=421)
+            return
         if rota == "/entrar":
             # Login vem antes de tudo: não há sessão para checar, e o CSRF token
             # da tela de login existe, mas exigi-lo aqui só criaria um caminho em
@@ -1279,6 +1282,32 @@ class Handler(BaseHTTPRequestHandler):
         if n > CORPO_MAXIMO:
             raise ValueError(f"corpo de {n} bytes passa do teto de {CORPO_MAXIMO}")
         return self.rfile.read(n).decode("utf-8", errors="replace")
+
+    def _host_esperado(self) -> bool:
+        """O `Host` da requisição tem de ser um nome que este painel atende.
+
+        Sem isto existe caminho de **DNS rebinding**: uma página em `evil.com`
+        aponta o domínio para `127.0.0.1`, e o navegador manda
+        `Host: evil.com:8765` com `Origin: http://evil.com`. Os dois batem entre
+        si, então a checagem de origem passa — e, sendo mesma origem para o
+        navegador, a página **lê a resposta** e com ela o token de CSRF.
+
+        Comparar contra a lista do que o servidor atende quebra a cadeia no
+        primeiro elo. É a defesa padrão para servidor local, e custa dez linhas.
+        """
+        bruto = (self.headers.get("Host") or "").strip().lower()
+        if not bruto:
+            # HTTP/1.1 exige `Host`. Ausente é cliente estranho, não navegador.
+            return False
+        nome = bruto.rsplit(":", 1)[0].strip("[]") if ":" in bruto else bruto
+        porta = bruto.rsplit(":", 1)[1] if ":" in bruto else ""
+        if porta and porta != str(self.server.server_port):   # type: ignore[attr-defined]
+            return False
+        aceitos = set(LOOPBACK) | {"0.0.0.0", "[::]"}
+        endereco = getattr(self.server, "server_address", ("", 0))[0]
+        if endereco:
+            aceitos.add(str(endereco).lower().strip("[]"))
+        return nome in aceitos
 
     def _origem_confiavel(self) -> bool:
         """`Origin` (ou `Referer`) tem de bater com o `Host` que atendeu.
@@ -1422,6 +1451,13 @@ class Handler(BaseHTTPRequestHandler):
     def _despachar(self, corpo: bool) -> None:
         alvo = urlparse(self.path)
         rota, consulta = alvo.path.rstrip("/") or "/", parse_qs(alvo.query)
+        if not self._host_esperado():
+            self._json(
+                {"erro": "Host não atendido por este painel", "host": self.headers.get("Host")},
+                corpo,
+                codigo=421,
+            )
+            return
         # O CSS e o JS ficam abertos: a tela de login precisa deles, e não há nada
         # neles que não esteja no repositório.
         if not rota.startswith("/static/") and not self._autorizado():

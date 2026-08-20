@@ -191,6 +191,17 @@ arquivo não seria rollback, seria uma terceira versão.
 `/api/config`: o campo aparece vazio, dizendo se há algo guardado. Deixar em branco
 mantém o valor; preencher substitui.
 
+### O `Host` é conferido em toda requisição
+
+Requisição com `Host` que este painel não atende recebe **421**. Isso fecha o
+caminho de **DNS rebinding**: uma página em `evil.com` aponta o domínio para
+`127.0.0.1`, e o navegador manda `Host: evil.com` com `Origin: http://evil.com` —
+os dois batem entre si, a checagem de origem passaria, e a página, sendo mesma
+origem aos olhos do navegador, **leria a resposta** e com ela o token de CSRF.
+
+Só `127.0.0.1`, `localhost`, `::1` e o endereço de bind são aceitos, com a porta
+conferida.
+
 ### A fronteira de mutação
 
 As três rotas que escrevem (`/config/salvar`, `/config/aplicar`, `/config/desfazer`)
