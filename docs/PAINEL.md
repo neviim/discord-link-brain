@@ -241,7 +241,12 @@ que apareceu no uso real: com proxy na frente — `tailscale serve`, nginx — o
 navegador manda `Origin: https://dotcom.taile537f.ts.net` e o proxy reescreve o
 `Host` para `127.0.0.1:8765`. Comparar um com o outro recusava login legítimo com
 "origem cruzada recusada". Só o nome é comparado, sem porta: atrás de proxy a porta
-pública não é a interna. O token é
+pública não é a interna.
+
+Quando recusa, a resposta **diz o que viu e o que aceita**: `origin_recebido`,
+`host_recebido` e `nomes_aceitos`. São cabeçalhos do próprio navegador de quem
+pediu, e ter esses três valores na mão é a diferença entre consertar na hora e
+adivinhar. O token é
 gerado por processo e vive no formulário — uma página de outro site não consegue
 lê-lo por causa da política de mesma origem. Depois do POST vem um 303, para
 recarregar a página não reenviar o formulário.
