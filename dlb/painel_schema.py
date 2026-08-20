@@ -297,6 +297,9 @@ CONFIG_SCHEMA: tuple[Campo, ...] = (
        "O painel divide a janela de uso com a classificação diária.", minimo=1, maximo=200),
     _c("PAINEL_CHAT_ESPERA_S", "Painel", "numero", "Espera na fila (s)", "python",
        "Não é timeout do modelo — esse é o SINTESE_TIMEOUT.", minimo=5, maximo=900),
+    _c("PAINEL_HOSTS", "Painel", "lista", "Nomes aceitos no cabeçalho Host", "python",
+       "Loopback, o endereço de bind e o hostname já entram sozinhos. Use para nome "
+       "completo de MagicDNS ou domínio de proxy."),
     _c("PAINEL_TOKEN", "Painel", "segredo", "Token de acesso ao painel", "python",
        "Vazio = sem autenticação, e o painel só sobe em 127.0.0.1. Preenchido, ele "
        "pede o token e guarda sessão em cookie. Vale ao reiniciar o painel."),

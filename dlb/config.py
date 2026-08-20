@@ -118,6 +118,11 @@ class Config:
     # token uma vez e guarda sessão em cookie `HttpOnly`.
     painel_token: str = ""
 
+    # Nomes que o painel aceita no cabeçalho `Host`, além de loopback, do endereço
+    # de bind e do hostname da máquina. Necessário para nome de MagicDNS
+    # (`dotcom.taile537f.ts.net`) ou para um proxy com domínio próprio.
+    painel_hosts: str = ""
+
     # O painel precisa ler o **arquivo**, não o ambiente do processo:
     # `from_env` usa `setdefault`, então `os.environ` é uma mistura de `.env` com
     # o que já estava exportado no shell. Para a tela dizer "o arquivo diz X",
@@ -219,6 +224,7 @@ class Config:
             ressurgir_canal=os.environ.get("RESSURGIR_CANAL", ""),
             temas_limiar=int(os.environ.get("TEMAS_LIMIAR", "8")),
             painel_token=os.environ.get("PAINEL_TOKEN", "").strip(),
+            painel_hosts=os.environ.get("PAINEL_HOSTS", "").strip(),
             painel_chat_max_por_hora=int(os.environ.get("PAINEL_CHAT_MAX_POR_HORA", "20")),
             painel_chat_espera_s=float(os.environ.get("PAINEL_CHAT_ESPERA_S", "120")),
             health_tolerance=int(os.environ.get("DLB_HEALTH_TOLERANCE", "28800")),
