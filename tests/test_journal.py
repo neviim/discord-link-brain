@@ -285,7 +285,9 @@ class TestMainRegistraERecusa(JournalCase):
             discord_token="x", discord_token_type="bot", channel_ids=["42"],
             vault_path=Path(self._tmp.name), state_dir=self.state,
         )
-        cli.Config = type("ConfigFalso", (), {"from_env": staticmethod(lambda: cfg)})
+        cli.Config = type(
+            "ConfigFalso", (), {"from_env": staticmethod(lambda estrito=True: cfg)}
+        )
         cli.cmd_sync = lambda cfg, args: (self.chamou.append(args), 0)[1]
 
     def tearDown(self):

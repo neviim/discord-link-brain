@@ -37,7 +37,7 @@ from urllib.parse import parse_qs, urlparse
 
 from . import acoes, agenda, chat as chat_mod, compose, env_io, gestor, journal, painel_dados, painel_schema, svg
 from .acervo import Acervo, filtrar, resumo
-from .config import Config
+from .config import Config, ConfigError
 from .models import TRIAGENS
 from .render import Raw, escapar, juntar, lista, pagina, substituir, tabela
 
@@ -329,6 +329,92 @@ class Estado:
             "tem_backup": bool(env_io.tem_backup(self.cfg.env_path)),
         }
 
+    def diagnostico_config(self) -> list[dict]:
+        """O que impede este painel de servir para algo, lido do disco agora.
+
+        Existe porque o painel **abre** com configuração incompleta (é o editor
+        dela; ver `Config.from_env`). Abrir sem dizer o que falta seria trocar uma
+        recusa que nomeia a variável por uma tela silenciosamente inútil — o pior
+        dos dois. Então a regra é: abre, e diz.
+
+        O vocabulário é o mesmo dos alertas do gestor (`nivel`, `titulo`,
+        `evidencia`, `acao`) para reusar `_ALERTA` em vez de inventar um segundo
+        jeito de desenhar faixa.
+
+        Os três estados são distintos, e a diferença é o que fazer:
+
+        1. **falta no arquivo** — preencher. Ninguém roda nada até lá;
+        2. **arquivo já tem, este processo subiu sem** — o comando disparado da
+           tela já funciona (subprocess relê o arquivo), mas as telas deste painel
+           seguem com a configuração de quando ele subiu. É reiniciar;
+        3. **vault inexistente ou incompleto** — o acervo aparece vazio, e vazio
+           por caminho errado é idêntico a vazio por acervo novo. Sem esta faixa,
+           a única saída seria desconfiar.
+
+        Lê o arquivo a cada chamada, como todo o resto do painel: um cache aqui
+        deixaria a faixa acusando falta de token depois de o token ser salvo.
+        """
+        faixas: list[dict] = []
+
+        do_arquivo = env_io.ler(self.cfg.env_path)
+        faltam = [
+            campo.chave
+            for campo in painel_schema.CONFIG_SCHEMA
+            if campo.obrigatorio and not (do_arquivo.get(campo.chave) or "").strip()
+        ]
+        if faltam:
+            # Arquivo inexistente e arquivo incompleto pedem passos diferentes, e o
+            # primeiro é o caso do clone novo. Mandar "preencha o .env" quando o
+            # .env não existe é a instrução que faz alguém procurar o que não está
+            # lá — salvar na tela **cria** o arquivo (ver `env_io.escrever`).
+            existe = Path(self.cfg.env_path).is_file()
+            faixas.append(
+                {
+                    "nivel": "alerta",
+                    "titulo": "Configuração incompleta — o painel abre, o pipeline não roda",
+                    "evidencia": (
+                        f"{self.cfg.env_path} não define: {', '.join(faltam)}."
+                        if existe
+                        else f"{self.cfg.env_path} ainda não existe. "
+                             f"Falta definir: {', '.join(faltam)}."
+                    ),
+                    "acao": (
+                        "Preencha em Configuração e salve. Até lá, sync, backfill, "
+                        "síntese e ressurgir saem com código 2."
+                        if existe
+                        else "Preencha em Configuração e salve — o arquivo é criado no "
+                             "primeiro salvamento. Até lá, sync, backfill, síntese e "
+                             "ressurgir saem com código 2."
+                    ),
+                }
+            )
+        elif self.cfg.faltando:
+            faixas.append(
+                {
+                    "nivel": "atencao",
+                    "titulo": "Configuração salva — este painel ainda está com a de antes",
+                    "evidencia": f"O processo subiu sem {', '.join(self.cfg.faltando)}; "
+                                 "o arquivo já tem.",
+                    "acao": "Comando disparado daqui já usa o valor novo, porque roda em "
+                            "subprocess e relê o arquivo. As telas deste painel, só "
+                            "depois de reiniciar: systemctl --user restart dlb-painel.",
+                }
+            )
+
+        try:
+            self.cfg.validate_vault()
+        except ConfigError as exc:
+            faixas.append(
+                {
+                    "nivel": "atencao",
+                    "titulo": "Vault não encontrado — o acervo vai aparecer vazio",
+                    "evidencia": str(exc),
+                    "acao": "Corrija OBSIDIAN_VAULT em Configuração. O painel está lendo "
+                            f"{self.cfg.vault_path}.",
+                }
+            )
+        return faixas
+
     def pegar_aviso(self) -> Raw:
         """Devolve e **limpa** a faixa do último POST.
 
@@ -455,6 +541,49 @@ def _alertas(lista: list[dict]) -> Raw:
             for a in lista
         ],
         "",
+    )
+
+
+def _pagina(
+    estado: Estado, titulo: str, corpo: Raw, ativo: str, rodape: Raw = Raw("")
+) -> str:
+    """`render.pagina` já sabendo o vault e o diagnóstico deste painel.
+
+    Toda tela autenticada passa por aqui, e é isso que faz a faixa de configuração
+    aparecer onde quer que a aba tenha sido aberta. A tela de **login** chama
+    `pagina` direto, de propósito: antes de autenticar, o painel não conta o que
+    falta na configuração de quem hospeda.
+    """
+    return pagina(
+        titulo,
+        corpo,
+        ativo=ativo,
+        vault=str(estado.cfg.vault_path),
+        rodape=rodape,
+        faixa=_alertas_config(estado),
+    )
+
+
+def _alertas_config(estado: Estado) -> Raw:
+    """As faixas de configuração, ou nada. Silêncio quando está tudo no lugar."""
+    diagnostico = estado.diagnostico_config()
+    if not diagnostico:
+        return Raw("")
+    return substituir(
+        '<div class="alertas alertas-config">$faixas</div>',
+        faixas=juntar(
+            [
+                substituir(
+                    _ALERTA,
+                    nivel=d["nivel"],
+                    titulo=d["titulo"],
+                    evidencia=d["evidencia"],
+                    acao=d["acao"],
+                )
+                for d in diagnostico
+            ],
+            "",
+        ),
     )
 
 
@@ -610,7 +739,7 @@ $execucoes
             )
         ),
     )
-    return pagina("Painel", corpo, ativo="/", vault=dados["vault"])
+    return _pagina(estado, "Painel", corpo, ativo="/")
 
 
 _HERO = """<section class="hero">
@@ -811,8 +940,8 @@ $agora
             f"{d['custo']['reusos']}× · último cálculo {d['custo']['ultimo_custo_ms']} ms"
         ),
     )
-    return pagina(
-        "Painel", corpo, ativo="/", vault=d["vault"],
+    return _pagina(
+        estado, "Painel", corpo, ativo="/",
         rodape=Raw('<span class="vivo vivo-frio"><span class="vivo-pulso"></span>'
                    "ao vivo · atualiza sozinho</span>"),
     )
@@ -866,7 +995,7 @@ $tabela""",
         filtros=filtros,
         tabela=_tabela_execucoes(runs),
     )
-    return pagina("Execuções", corpo, ativo="/execucoes", vault=str(estado.cfg.vault_path))
+    return _pagina(estado, "Execuções", corpo, ativo="/execucoes")
 
 
 _LOGIN = """<h1>Painel do dlb</h1>
@@ -1009,7 +1138,7 @@ $divergencias""",
         ),
         divergencias=divergencias,
     )
-    return pagina("Agenda", corpo, ativo="/agenda", vault=str(estado.cfg.vault_path))
+    return _pagina(estado, "Agenda", corpo, ativo="/agenda")
 
 
 _CHAT_ITEM = """<article class="troca $classe">
@@ -1150,7 +1279,7 @@ $aviso
         )
         or Raw("<p class=vazio>Nenhuma pergunta ainda nesta sessão do painel.</p>"),
     )
-    return pagina("Chat", corpo, ativo="/chat", vault=str(estado.cfg.vault_path))
+    return _pagina(estado, "Chat", corpo, ativo="/chat")
 
 
 _CAMPO_TEXTO = """<label class=campo>
@@ -1360,7 +1489,7 @@ $desfazer""",
         efeito=_efeito_do_aplicar(dados),
         desfazer=desfazer,
     )
-    return pagina("Configuração", corpo, ativo="/config", vault=str(estado.cfg.vault_path))
+    return _pagina(estado, "Configuração", corpo, ativo="/config")
 
 
 _TRIAR = """<form method=post action="/acervo/triar" class=triar>
@@ -1464,7 +1593,7 @@ $tabela""",
             vazio="Nenhuma nota com esse filtro.",
         ),
     )
-    return pagina("Acervo", corpo, ativo="/acervo", vault=str(estado.cfg.vault_path))
+    return _pagina(estado, "Acervo", corpo, ativo="/acervo")
 
 
 # ---------------------------------------------------------------------- rotas

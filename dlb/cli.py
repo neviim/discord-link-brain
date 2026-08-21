@@ -796,6 +796,18 @@ def cmd_temas(cfg: Config, args: argparse.Namespace) -> int:
 def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     ok = True
 
+    # Primeiro item, porque é o que explica todos os outros: sem token não há
+    # canal para checar, e o relatório inteiro sairia verde por vacuidade.
+    if cfg.faltando:
+        # "não definido", e não "falta no .env": o valor pode vir do ambiente, e
+        # afirmar sobre o arquivo seria afirmar mais do que se olhou.
+        _log(f"configuração    FALHA: {', '.join(cfg.faltando)} não definido")
+        _log(f"                procurei no ambiente e em {cfg.env_path}")
+        _log("                copie .env.example para .env, ou use `dlb painel`")
+        ok = False
+    else:
+        _log(f"configuração    {len(cfg.channel_ids)} canal(is) · token presente")
+
     _log(f"vault           {cfg.vault_path}")
     try:
         cfg.validate_vault()
@@ -1030,14 +1042,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pnl.add_argument("--host", default="127.0.0.1", help="endereço de bind (padrão 127.0.0.1)")
     pnl.add_argument("--porta", type=int, default=8765, help="porta (padrão 8765)")
-    pnl.set_defaults(func=cmd_painel)
+    # O painel **é** o editor de configuração, e o `doctor` **é** o diagnóstico
+    # dela. Os dois abrem com configuração incompleta de propósito: exigir
+    # configuração válida para abrir a tela que a conserta, ou o comando que a
+    # explica, é o ovo antes da galinha — num clone novo não sobra caminho a não
+    # ser editar o `.env` às cegas. Todo o resto continua estrito.
+    pnl.set_defaults(func=cmd_painel, config_estrita=False)
 
     doctor = sub.add_parser("doctor", help="checa configuração, vault e acesso ao Discord")
     doctor.add_argument(
         "--testar-envio", action="store_true",
         help="posta uma mensagem de teste e apaga — confere 'Enviar mensagens'",
     )
-    doctor.set_defaults(func=cmd_doctor)
+    doctor.set_defaults(func=cmd_doctor, config_estrita=False)
 
     return parser
 
@@ -1052,7 +1069,12 @@ def cmd_painel(cfg: Config, args: argparse.Namespace) -> int:
     from .painel import Erro as PainelErro
     from .painel import servir
 
-    cfg.validate_vault()
+    # **Sem `validate_vault()` de propósito.** Era o segundo bloqueio do clone
+    # novo: mesmo com o token preenchido, o vault padrão não existe e o painel
+    # recusava antes de mostrar a tela em que se corrige o caminho. O acervo
+    # degrada sozinho — `Acervo.links()` faz `glob` num diretório inexistente e
+    # devolve lista vazia — e o painel diz na faixa qual caminho está lendo e o
+    # que falta nele. Recusar aqui trocava uma tela que explica por um traceback.
     try:
         return servir(cfg, host=args.host, porta=args.porta)
     except PainelErro as exc:
@@ -1071,8 +1093,12 @@ def main(argv: list[str] | None = None) -> int:
     diferente: não é para investigar nem para insistir, é para esperar.
     """
     args = build_parser().parse_args(argv)
+    # Estrito é o padrão, e a exceção é **declarada pelo subcomando** em
+    # `set_defaults`, não decidida aqui por nome. Um `if comando == "painel"` no
+    # despachante seria a mesma coisa hoje e a fonte errada amanhã: quem sabe se
+    # um comando pode rodar sem configuração é o comando.
     try:
-        cfg = Config.from_env()
+        cfg = Config.from_env(estrito=getattr(args, "config_estrita", True))
     except ConfigError as exc:
         print(f"Configuração: {exc}", file=sys.stderr)
         return 2
@@ -1091,6 +1117,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Recusado: {exc}", file=sys.stderr)
             run.recusar(str(exc))
             return 3
+        except ConfigError as exc:
+            # Problema de configuração levantado **dentro** do comando — na prática
+            # `validate_vault()`, que quase todo comando chama na primeira linha. A
+            # construção já tratava o dela; este ramo faltava, e sem ele um vault
+            # com caminho errado saía como traceback.
+            #
+            # Importa porque o painel dispara comando por subprocess e mostra a
+            # saída: traceback ali é ruído sobre um problema que tem uma frase
+            # exata. Fecha como `falha`, não `erro` — o comando reportou o
+            # problema, não é bug nem ambiente (ver `Run.fechar`).
+            print(f"Configuração: {exc}", file=sys.stderr)
+            run.fechar(exit_code=2)
+            return 2
         run.fechar(exit_code=codigo)
         return codigo
 

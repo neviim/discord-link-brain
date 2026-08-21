@@ -118,6 +118,7 @@ _PAGINA = """<!doctype html>
   <span class=vault title="$vault">$vault_curto</span>
 </header>
 <main>
+$faixa
 $corpo
 </main>
 <footer>$rodape</footer>
@@ -127,8 +128,23 @@ $corpo
 """
 
 
-def pagina(titulo: str, corpo: Raw, ativo: str = "/", vault: str = "", rodape: str = "") -> str:
-    """Envelope de toda tela. `corpo` já vem montado por `substituir`."""
+def pagina(
+    titulo: str,
+    corpo: Raw,
+    ativo: str = "/",
+    vault: str = "",
+    rodape: str = "",
+    faixa: Raw | str = "",
+) -> str:
+    """Envelope de toda tela. `corpo` já vem montado por `substituir`.
+
+    `faixa` fica **acima** do corpo, dentro do `main`, e serve para o que vale em
+    qualquer tela — hoje, configuração incompleta. Fica no envelope e não em cada
+    view porque o caso de uso é "abri o painel numa aba qualquer": um aviso que só
+    aparecesse na tela de configuração perderia justamente quem não sabe que
+    precisa ir lá. Quem monta o conteúdo é o painel; a `render` continua sem
+    saber o que é `Config`.
+    """
     menu = juntar(
         (
             substituir(
@@ -147,6 +163,7 @@ def pagina(titulo: str, corpo: Raw, ativo: str = "/", vault: str = "", rodape: s
         titulo=titulo,
         menu=menu,
         corpo=corpo,
+        faixa=faixa,
         vault=vault_texto,
         vault_curto=vault_texto.rsplit("/", 1)[-1] or vault_texto,
         rodape=rodape,

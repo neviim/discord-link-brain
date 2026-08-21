@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from . import journal
+from . import env_io, journal
 from .config import Config
 from .corpus import LINKS_DIR
 from .models import TRIAGENS
@@ -169,6 +169,12 @@ def rodar(cfg: Config, comando: str, timeout: float = TIMEOUT_PADRAO_S) -> Execu
         saida = subprocess.run(
             [sys.executable, "-m", "dlb", comando],
             cwd=str(raiz),
+            # O filho relê o `.env` sozinho, e para isso o ambiente do painel não
+            # pode ficar na frente — ver `env_io.ambiente_limpo`. Sem isto, salvar
+            # o token na tela e clicar aqui ainda recusava com "DISCORD_TOKEN não
+            # definido", porque o painel subiu com o vazio do `.env.example` e
+            # `setdefault` não sobrescreve string vazia.
+            env=env_io.ambiente_limpo(cfg.env_path),
             capture_output=True,
             text=True,
             timeout=timeout,

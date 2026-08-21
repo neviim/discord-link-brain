@@ -127,6 +127,11 @@ code { font-size: 0.85em; background: color-mix(in srgb, var(--tinta) 8%, transp
 .faixa .evidencia { margin: 0.25rem 0 0; font-size: 0.85rem; }
 .faixa .acao { margin: 0.3rem 0 0; font-size: 0.8rem; color: var(--fraco); }
 
+/* A faixa de configuração vem antes do conteúdo de qualquer tela, então precisa
+   de respiro embaixo — sem isto ela cola no primeiro cartão e se lê como título
+   dele em vez de aviso da página. */
+.alertas-config { margin: 0 0 1.2rem; }
+
 .quieto { color: var(--bom); font-size: 0.9rem; margin: 0 0 0.25rem; }
 
 /* Chat: pergunta e resposta empilhadas, mais recente no topo. Sem bolha de

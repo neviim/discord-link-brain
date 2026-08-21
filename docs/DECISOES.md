@@ -748,11 +748,71 @@ agente custaria a testabilidade inteira e a independência de quota.
 
 ---
 
+## O painel e o `doctor` abrem sem configuração válida; o resto não
+
+**Alternativa considerada:** afrouxar `Config.from_env()` para todo mundo, movendo
+a validação para cada comando. Parece mais limpo — "o objeto carrega o que o
+arquivo diz, quem usa valida" — e joga fora a garantia que mais vale aqui: hoje,
+**se você tem um `Config`, ele é utilizável**. Vinte comandos passariam a poder
+esquecer de validar, e o esquecimento sairia como requisição ao Discord com
+credencial vazia, não como recusa.
+
+O problema real era mais estreito: o painel **é** o editor da configuração, e
+exigia configuração válida para abrir. Num clone novo isso fecha o ciclo — a
+única saída era editar o `.env` às cegas, que é o que a tela existe para evitar.
+O mesmo vale para `dlb doctor`: o comando que existe para dizer o que está errado
+era o único que não rodava quando algo estava errado.
+
+Então a tolerância é uma **lista branca de dois**, declarada pelo subcomando em
+`set_defaults(config_estrita=False)` e não por um `if comando == "painel"` no
+despachante. Comando novo nasce estrito; mudar isso exige mexer na linha onde
+está escrito o porquê. Um teste afirma que a lista tem exatamente estes dois.
+
+**Eram três bloqueios, não um.** Os dois primeiros são óbvios em retrospecto e o
+terceiro é o que fazia a tela cumprir seu papel e o sistema dizer que não:
+
+1. `from_env()` recusando sem `DISCORD_TOKEN`;
+2. `cfg.validate_vault()` no `cmd_painel` — mesmo com o token preenchido, o vault
+   padrão de um clone novo não existe. O acervo já degradava sozinho (`glob` em
+   diretório inexistente devolve lista vazia); a recusa era gratuita;
+3. `load_dotenv` faz `os.environ.setdefault`, então o painel carrega **em si** o
+   `DISCORD_TOKEN=` vazio que vem do `.env.example`. O comando disparado pela tela
+   herdava esse ambiente, e `setdefault` não sobrescreve string vazia: depois de
+   salvar o token, `sync` ainda recusava com "DISCORD_TOKEN não definido". É a
+   mesma causa do defeito do `compose` já registrado acima, em outro caminho — por
+   isso `ambiente_limpo` saiu do `compose.py` e virou `env_io.ambiente_limpo`,
+   usado pelos dois.
+
+**A contrapartida de abrir é dizer.** Painel que sobe com configuração incompleta
+e não explica trocaria uma recusa que nomeia a variável por uma tela
+silenciosamente inútil — pior que a recusa. Então uma faixa no topo de **toda**
+tela nomeia o que falta, aponta o arquivo e diz a consequência. Três detalhes que
+não são estética:
+
+- ela lê o arquivo **a cada requisição**, como todo o resto do painel. Com cache,
+  seguiria acusando falta de token depois de o token ter sido salvo;
+- arquivo inexistente e arquivo incompleto têm textos diferentes. Mandar "preencha
+  o `.env`" quando o `.env` não existe faz procurar o que não está lá;
+- ela **não** aparece na tela de login. Nada sobre a máquina antes de provar quem é.
+
+E `ConfigError` levantado **dentro** de um comando passou a sair como código 2 com
+uma frase, em vez de traceback: o painel mostra essa saída numa caixa de texto, e
+traceback ali é ruído sobre um problema que tem nome exato.
+
+**Desfazer custa:** voltar ao ciclo sem saída do clone novo. O caminho barato de
+reintroduzir o defeito é devolver `cfg.validate_vault()` ao `cmd_painel` — e é a
+única das seis mutações que a suíte não pegou na primeira tentativa, o que rendeu
+o teste `TestCmdPainelNaoExigeVault`.
+
+---
+
 ## O que ainda não foi resolvido
 
-- **`cli.py` testado pela metade** (1041 linhas, 68%). `sync` e `backfill` têm
+- **`cli.py` testado pela metade** (1138 linhas, 74%). `sync` e `backfill` têm
   teste de ponta a ponta com dublês — inclusive a ordem escreve-depois-marca, que
-  é onde link some em silêncio. Faltam `doctor` e o laço do `responder`.
+  é onde link some em silêncio. `doctor` ganhou o primeiro teste de comportamento
+  junto com a tolerância de configuração (ele diagnostica em vez de recusar), mas
+  o corpo do relatório segue sem teste. Falta o laço do `responder`.
   O `backfill` entrou depois de custar um `NameError` em produção: ele lia
   `guilds`, atribuída só dentro de `cmd_sync`, e nenhum teste chegava ao corpo do
   laço para descobrir. Cobertura de despacho não é cobertura de miolo.

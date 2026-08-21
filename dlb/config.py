@@ -129,6 +129,11 @@ class Config:
     # ela tem de abrir X.
     env_path: Path = PROJECT_ROOT / ".env"
 
+    # Chaves obrigatórias que não vieram. **Sempre vazio** na construção estrita:
+    # lá a ausência é exceção, não estado. Só o painel constrói tolerante, e
+    # precisa saber o que falta para dizer na tela em vez de fingir que está bem.
+    faltando: tuple[str, ...] = ()
+
     # Marca no Discord o que já virou nota. Ver README: marcar, nunca apagar.
     # Dois emojis porque são dois estados diferentes para quem olha o canal:
     # "esta captura entrou agora" e "isto você já tinha".
@@ -152,20 +157,45 @@ class Config:
         return self.channel_names.get(channel_id, channel_id)
 
     @classmethod
-    def from_env(cls) -> "Config":
+    def from_env(cls, estrito: bool = True) -> "Config":
+        """Lê o ambiente e o `.env`. Estrito recusa configuração incompleta.
+
+        `estrito=False` existe para **dois** chamadores, declarados em
+        `build_parser`: `painel` e `doctor`. O painel é o editor da configuração e
+        o `doctor` é o diagnóstico dela — exigir configuração válida para abrir a
+        tela que a conserta, ou o comando que a explica, é o ovo antes da galinha.
+        Num clone novo não há por onde começar a não ser editando o `.env` às
+        cegas, que é justamente o que essas duas coisas existem para evitar.
+
+        O que a tolerância **não** faz: afrouxar o pipeline. `sync`, `backfill`,
+        `sintese` e `ressurgir` continuam construindo estrito e continuam saindo
+        com código 2 — falar com o Discord sem token não é degradação graciosa, é
+        erro, e o subprocess que o painel dispara vai dizer isso com estas
+        palavras. O que muda é só quem pode **abrir a tela**.
+
+        Um único ponto lê o ambiente, com ou sem tolerância: duplicar a construção
+        num `from_env_parcial` criaria duas listas de variáveis para manter, e a
+        segunda envelhece calada.
+        """
         load_dotenv()
+
+        faltando: list[str] = []
 
         token = os.environ.get("DISCORD_TOKEN", "").strip()
         if not token:
-            raise ConfigError(
-                "DISCORD_TOKEN não definido. Copie .env.example para .env e preencha."
-            )
+            if estrito:
+                raise ConfigError(
+                    "DISCORD_TOKEN não definido. Copie .env.example para .env e preencha."
+                )
+            faltando.append("DISCORD_TOKEN")
 
         raw_channels = os.environ.get("DISCORD_CHANNEL_IDS", "").strip()
         if not raw_channels:
-            raise ConfigError(
-                "DISCORD_CHANNEL_IDS não definido (ids separados por vírgula)."
-            )
+            if estrito:
+                raise ConfigError(
+                    "DISCORD_CHANNEL_IDS não definido (ids separados por vírgula)."
+                )
+            faltando.append("DISCORD_CHANNEL_IDS")
         channel_ids = [c.strip() for c in raw_channels.split(",") if c.strip()]
 
         names = _pares(os.environ.get("DISCORD_CHANNEL_NAMES", ""))
@@ -176,6 +206,7 @@ class Config:
         ).expanduser()
 
         return cls(
+            faltando=tuple(faltando),
             discord_token=token,
             discord_token_type=os.environ.get("DISCORD_TOKEN_TYPE", "bot"),
             channel_ids=channel_ids,
