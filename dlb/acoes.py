@@ -13,7 +13,7 @@ silêncio, porque `descartado` é estado terminal.
 O caminho óbvio seria `frontmatter.split` → mexer no dicionário →
 `frontmatter.compose`. Funciona, e reescreve o frontmatter inteiro: ordem
 normalizada, escalares recitados, listas reformatadas. Para uma mudança de uma
-palavra, isso põe em risco tudo que o Dotcom editou à mão no Obsidian.
+palavra, isso põe em risco tudo que foi editado à mão no Obsidian.
 
 Então a troca é de **uma linha**: acha `triagem:` dentro do bloco de frontmatter e
 substitui só ela. O resto do arquivo — inclusive tudo abaixo de

@@ -61,7 +61,7 @@ class TestEscapePorConstrucao(unittest.TestCase):
         self.assertEqual(externo, "<p><b>&lt;i&gt;</b></p>")
 
     def test_chave_faltando_e_erro_e_nao_dolar_na_tela(self):
-        """`safe_substitute` deixaria `$titulo` literal aparecendo para o Dotcom.
+        """`safe_substitute` deixaria `$titulo` literal aparecendo na tela.
         Erro no teste é melhor que erro na tela."""
         with self.assertRaises(KeyError):
             substituir("<p>$a$b</p>", a="1")

@@ -3,7 +3,7 @@
 A saída do LLM é a única entrada do pipeline que ninguém controla: o modelo
 pode cercar em ```json, tagarelar antes do array, inventar categoria fora do
 vocabulário ou simplesmente pular um link. Cada um desses casos vira nota no
-segundo cérebro do Dotcom, então cada um tem teste aqui.
+segundo cérebro de alguém, então cada um tem teste aqui.
 """
 
 import unittest
@@ -22,7 +22,7 @@ from dlb.models import AREAS, CATEGORIAS, LinkHit, PageMeta
 TZ = ZoneInfo("America/Sao_Paulo")
 
 
-def hit(url="https://exemplo.com/a", context="olha isso", author="Dotcom"):
+def hit(url="https://exemplo.com/a", context="olha isso", author="Fulano"):
     return LinkHit(
         url=url,
         channel_id="42",

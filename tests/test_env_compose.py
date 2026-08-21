@@ -344,7 +344,7 @@ class TestAplicar(unittest.TestCase):
 
     def test_timeout_avisa_que_pode_ter_subido_de_qualquer_forma(self):
         """Abandonar o `up` não desfaz o que ele já fez — e dizer o contrário
-        mandaria o Dotcom procurar problema onde não há."""
+        mandaria quem opera procurar problema onde não há."""
         def estoura(*a, **k):
             raise subprocess.TimeoutExpired("dlb.sh", 600)
 

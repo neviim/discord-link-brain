@@ -59,7 +59,7 @@ def substituir(template: str, /, **valores: object) -> Raw:
     e isso só acontece se alguém escrever `Raw` no caminho.
 
     Usa `substitute`, não `safe_substitute`: chave que falta é erro na hora do
-    teste, e não um `$titulo` literal aparecendo na tela do Dotcom.
+    teste, e não um `$titulo` literal aparecendo na tela.
     """
     return Raw(Template(template).substitute({k: escapar(v) for k, v in valores.items()}))
 

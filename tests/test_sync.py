@@ -31,7 +31,7 @@ def msg(mid, content, ts="2026-08-15T12:30:00.000000+00:00", bot=False, reacoes=
         "id": mid,
         "content": content,
         "timestamp": ts,
-        "author": {"username": "Jads", "id": "7", "bot": bot},
+        "author": {"username": "Sicrano", "id": "7", "bot": bot},
     }
     if reacoes:
         m["reactions"] = [{"emoji": {"name": e}, "me": True} for e in reacoes]

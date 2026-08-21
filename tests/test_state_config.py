@@ -63,9 +63,9 @@ class TestStore(unittest.TestCase):
 
     def test_json_fica_legivel_para_humano(self):
         # Você vai abrir esse arquivo para depurar algum dia.
-        self.store.save("42", ChannelState("1", None, "🔗_arquivar"))
+        self.store.save("42", ChannelState("1", None, "🔗_links"))
         bruto = (Path(self._tmp.name) / "42.json").read_text(encoding="utf-8")
-        self.assertIn("🔗_arquivar", bruto)      # sem \u escapado
+        self.assertIn("🔗_links", bruto)      # sem \u escapado
         self.assertEqual(json.loads(bruto)["last_message_id"], "1")
 
 

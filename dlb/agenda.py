@@ -264,7 +264,7 @@ def slots(env: Mapping[str, str], agora: datetime) -> list[Slot]:
     return saida
 
 
-def fuso(env: Mapping[str, str], padrao: str = "America/Sao_Paulo") -> ZoneInfo:
+def fuso(env: Mapping[str, str], padrao: str = "UTC") -> ZoneInfo:
     """O fuso em que o agendador conta as horas.
 
     O `scheduler.sh` usa `date` e `datetime.now()` **locais do container**, e o

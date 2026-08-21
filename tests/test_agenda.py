@@ -5,7 +5,7 @@ A tabela de paridade entre `dlb/agenda.py` e `docker/scheduler.sh`.
 `dlb/agenda.py` é uma **segunda implementação** da grade de agendamento: a
 primeira é shell, dentro do container. Duas implementações da mesma regra
 divergem, e aqui a divergência é silenciosa — nada quebra quando a tela mostra
-"próximo sync às 18:00" e o sync sai às 12:00. Quem confere é o Dotcom, uma vez,
+"próximo sync às 18:00" e o sync sai às 12:00. Quem confere é uma pessoa, uma vez,
 e depois para de confiar no painel.
 
 Por isso este arquivo não tem uma tabela de valores que eu escrevi olhando o
@@ -307,9 +307,13 @@ class TestVisao(unittest.TestCase):
         self.assertEqual(len(dados["slots"]), 4)
 
     def test_fuso_invalido_nao_derruba(self):
-        self.assertEqual(
-            str(agenda.fuso({"TZ": "Marte/Olympus"})), "America/Sao_Paulo"
-        )
+        """Cai no padrão neutro (`UTC`) em vez de estourar `ZoneInfoNotFoundError`.
+
+        O padrão é `UTC` de propósito: fuso de um lugar específico embutido no
+        código faz o sistema mentir a hora na máquina de todo mundo que não mora
+        lá. Quem tem fuso próprio declara em `TIMEZONE`, e o teste acima cobre
+        esse caminho."""
+        self.assertEqual(str(agenda.fuso({"TZ": "Marte/Olympus"})), "UTC")
 
     def test_run_on_start_e_1_por_padrao(self):
         self.assertTrue(agenda.visao({})["roda_ao_subir"])

@@ -17,13 +17,13 @@ from dlb.vault import Vault, fonte_name, sanitize
 
 
 class TestNomeDeArquivo(unittest.TestCase):
-    """O canal real do Dotcom chama `🔗_arquivar` — emoji em nome de arquivo."""
+    """Nome de canal com emoji — comum no Discord, e ele vira nome de arquivo."""
 
     def test_emoji_sobrevive_ao_saneamento(self):
-        self.assertEqual(sanitize("🔗_arquivar"), "🔗_arquivar")
+        self.assertEqual(sanitize("🔗_links"), "🔗_links")
         self.assertEqual(
-            fonte_name("🔗_arquivar", "2026-08-15"),
-            "FONTE - Discord 🔗_arquivar - 2026-08-15",
+            fonte_name("🔗_links", "2026-08-15"),
+            "FONTE - Discord 🔗_links - 2026-08-15",
         )
 
     def test_caracteres_que_quebram_no_obsidian_saem(self):
@@ -74,12 +74,13 @@ class TestSnowflake(unittest.TestCase):
         depois = int(snowflake_for(DISCORD_EPOCH_MS + 2_000))
         self.assertLess(antes, depois)
 
-    def test_bate_com_um_id_real_do_canal(self):
-        # 1414144747806920734 foi criado em 2025-09-07; o snowflake daquele
-        # instante tem que ficar abaixo dele, senão `--since` pularia mensagens.
+    def test_bate_com_um_id_de_canal(self):
+        # Id sintético cujo timestamp embutido é 2025-10-01. O snowflake calculado
+        # para um instante anterior tem que ficar abaixo dele, senão `--since`
+        # pularia mensagens — é a conta que o `sync` faz sem cursor.
         criado_em = datetime(2025, 9, 7, 0, 0, tzinfo=ZoneInfo("UTC"))
         limite = int(snowflake_for(int(criado_em.timestamp() * 1000)))
-        self.assertLess(limite, 1414144747806920734)
+        self.assertLess(limite, 1422734760345600000)
 
 
 class TestViradaDoDia(unittest.TestCase):

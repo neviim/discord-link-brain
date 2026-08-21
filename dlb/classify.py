@@ -20,7 +20,7 @@ from .models import AREAS, CATEGORIAS, LinkHit, LinkNote, PageMeta
 
 SYSTEM_PROMPT = textwrap.dedent(
     """\
-    Você cataloga links para o segundo cérebro (vault Obsidian) do Dotcom.
+    Você cataloga links para o segundo cérebro (vault Obsidian) do usuário.
     Para cada link, escreva uma nota curta em português do Brasil que permita,
     semanas depois, saber do que aquilo tratava sem reabrir a página.
 

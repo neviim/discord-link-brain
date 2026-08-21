@@ -671,7 +671,7 @@ de conveniência, num processo que também vai ter chat de LLM lendo texto vindo
 internet. O container é isolamento; furá-lo para ganhar comodidade troca a única
 garantia que ele dava.
 
-No host o painel é um processo comum, com o usuário do Dotcom, que já pode rodar
+No host o painel é um processo comum, com o usuário que o iniciou, que já pode rodar
 `docker compose` porque é a máquina dele.
 
 **Desfazer custa:** o socket do Docker montado, ou um agente de execução separado

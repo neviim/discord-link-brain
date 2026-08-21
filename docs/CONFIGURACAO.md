@@ -61,8 +61,8 @@ Lidas por `config.py`. Valem no host e dentro do container.
 
 | Variável | Padrão | O quê |
 |---|---|---|
-| `OBSIDIAN_VAULT` | `~/Documents/00_Obsidian-dotcom/dotcom` | Raiz do vault. `~` é expandido |
-| `TIMEZONE` | `America/Sao_Paulo` | Define a virada do dia. Link das 22h no Brasil é de hoje, não de amanhã em UTC |
+| `OBSIDIAN_VAULT` | `~/Documents/Obsidian/vault` | Raiz do vault. `~` é expandido |
+| `TIMEZONE` | `UTC` | Define a virada do dia. **Declare o seu**: com o padrão, um link postado às 22h em `America/Sao_Paulo` cai no dia seguinte |
 
 ### LLM
 
@@ -294,11 +294,11 @@ exportar à mão se for chamar `docker compose` direto.
 vault           /vault
                 estrutura OK (10_FONTES, 20_WIKI, 30_MOC, 40_DIARIO, 90_META)
 llm backend     claude-cli (modelo claude-opus-5)
-fuso            America/Sao_Paulo
+fuso            UTC
 enriquecimento  ligado
 marcação        ✅ arquivado agora · 📚 já documentado  (precisa de 'Adicionar reações')
-canal 1414…734  OK — #🔗_arquivar
-cursor 1414…734 last_message_id=1538… last_run=2026-08-17T21:54:34+00:00
+canal 1422…000  OK — #🔗_links
+cursor 1422…000 last_message_id=1538… last_run=2026-08-17T21:54:34+00:00
 
 OK
 ```

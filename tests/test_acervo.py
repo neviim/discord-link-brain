@@ -44,7 +44,7 @@ class TestMemo(AcervoCase):
     def test_editar_a_nota_no_obsidian_muda_o_painel_no_reload(self):
         """O critério de pronto da F1, no nível do cache.
 
-        Simula o que o Dotcom faz: abre a nota no Obsidian, muda a triagem, salva.
+        Simula o uso real: abre a nota no Obsidian, muda a triagem, salva.
         A próxima leitura tem de ver a mudança — e tem de vê-la relendo **só
         aquele arquivo**.
         """

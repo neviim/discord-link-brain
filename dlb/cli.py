@@ -53,7 +53,7 @@ def _hoje_local() -> str:
 
     import os as _os
 
-    tz = _os.environ.get("TIMEZONE", "America/Sao_Paulo")
+    tz = _os.environ.get("TIMEZONE", "UTC")
     return datetime.now(ZoneInfo(tz)).date().isoformat()
 
 

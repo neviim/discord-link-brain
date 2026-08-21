@@ -53,8 +53,8 @@ class Config:
     # o `migrar`, que é offline por desenho e só tem os arquivos do vault.
     guild_ids: dict[str, str] = field(default_factory=dict)
 
-    vault_path: Path = Path.home() / "Documents/00_Obsidian-dotcom/dotcom"
-    timezone: str = "America/Sao_Paulo"
+    vault_path: Path = Path.home() / "Documents/Obsidian/vault"
+    timezone: str = "UTC"
 
     llm_backend: str = "claude-cli"  # claude-cli | anthropic | none
     llm_model: str = "claude-opus-5"

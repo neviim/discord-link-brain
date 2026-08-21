@@ -72,7 +72,7 @@ class TestLeituraDaNota(CorpusCase):
         self.assertEqual(e.categoria, "artigo")
         self.assertEqual(e.area, "area/ia")
         self.assertEqual(e.triagem, "inbox")
-        self.assertEqual(e.autor, "Dotcom")
+        self.assertEqual(e.autor, "Fulano")
         self.assertEqual(e.fonte, "FONTE - Discord estudos - 2026-08-15")
 
     def test_le_resumo_e_porque_importa_do_corpo(self):

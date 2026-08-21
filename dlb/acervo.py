@@ -103,7 +103,7 @@ class Acervo:
 def resumo(entradas: list[LinkEntry]) -> dict:
     """Os números que a tela inicial mostra sobre o acervo.
 
-    Fila de triagem é o número que o Dotcom pediu para acompanhar: se `inbox` só
+    Fila de triagem é o número que se acompanha no dia a dia: se `inbox` só
     cresce, a triagem não está acontecendo — e isso é informação sobre o *hábito*,
     não sobre o pipeline.
     """

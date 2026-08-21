@@ -103,7 +103,7 @@ class TestResponderParado(unittest.TestCase):
 
     def test_nao_alerta_sobre_servico_que_nunca_rodou(self):
         """Heartbeat ausente = responder desligado. Alertar sobre serviço que o
-        Dotcom não ligou é a forma mais rápida de ensinar a ignorar o painel."""
+        ninguém ligou é a forma mais rápida de ensinar a ignorar o painel."""
         v = visao(heartbeats={"sync": 600.0, "responder": None})
         self.assertNotIn("responder_parado", chaves(v))
 
@@ -236,8 +236,8 @@ class TestFilaDeTriagem(unittest.TestCase):
 
     def test_nivel_e_atencao_e_nao_alerta(self):
         """Fila grande não é sistema quebrado — é hábito. Misturar os dois níveis
-        faria a tela mostrar vermelho por algo que só o Dotcom resolve, no tempo
-        dele."""
+        faria a tela mostrar vermelho por algo que só uma pessoa resolve, no tempo
+        dela."""
         v = visao(acervo={"total": 77, "por_triagem": {"inbox": 77}, "sem_pagina": []})
         alerta = next(a for a in avaliar(v, agora=AGORA) if a.chave == "fila_de_triagem")
         self.assertEqual(alerta.nivel, "atencao")

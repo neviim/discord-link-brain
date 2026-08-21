@@ -9,7 +9,7 @@ from urllib.parse import quote
 import requests
 
 API = "https://discord.com/api/v10"
-USER_AGENT = "discord-link-brain/0.1 (+https://github.com/neviim)"
+USER_AGENT = "discord-link-brain/0.1"
 
 # Discord usa snowflakes: os 42 bits mais altos são o timestamp em ms desde
 # 2015-01-01. Isso deixa a gente pedir "mensagens depois de <data>" sem cursor.

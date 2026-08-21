@@ -25,8 +25,8 @@ Discord → extrai → lê a página → LLM classifica → 10_FONTES/  captura 
 
 ## Passo 1 — Preparar o vault
 
-**Na sua máquina isto já está feito.** Vale ler se você for apontar o pipeline
-para outro vault.
+**Passo obrigatório antes da primeira captura.** Quem já rodou o pipeline antes
+desta camada existir também passa por aqui, uma vez.
 
 A camada nova exige vocabulário que o `90_META/ESQUEMA.md` do vault não tinha, e a
 regra do próprio ESQUEMA é: *mude a regra ali primeiro, não abra exceção
@@ -63,7 +63,7 @@ triagem         70 inbox
 
 ## Passo 2 — Migrar o histórico
 
-**Também já feito na sua máquina:** 70 notas, 26 dias.
+Passo opcional, e só faz sentido em vault que já tem histórico de links.
 
 `dlb migrar` cria a nota dos links que já estavam no vault. **Não chama LLM e não
 toca a rede** — tudo que o modelo produziu está nos bullets do diário, e tudo que é
@@ -100,7 +100,7 @@ Insere **uma linha** sob cada bullet antigo:
 - **[Mindwalk: mapa do código…](https://www.youtube.com/watch?v=T8B39zn7-o8)** — Vídeo…
   *Por que importa:* É uma demonstração prática em português…
   Conceitos: Mindwalk *(candidato)*, Matheus Battisti *(candidato)*
-  <sub>18:55 · Jads · #area/ia</sub>
+  <sub>18:55 · Sicrano · #area/ia</sub>
   Nota: [[2026-08-17 Mindwalk - mapa do código e análise de alterações em tempo real (Hora de Codar)]]
 ```
 
@@ -135,11 +135,14 @@ obsidian base:query path="30_MOC/Links.base" view=Inbox format=md
 obsidian base:query path="30_MOC/Links.base" view=Fontes format=md
 ```
 
-### O que a view Fontes já revelou no seu vault
+### O que a view Fontes revela
+
+A contagem por domínio, que num vault com algumas dezenas de links costuma sair
+bem concentrada — a forma abaixo é ilustrativa:
 
 ```
 48  youtube.com
- 8  instagram.com
+ 8  exemplo.com
  2  github.com
  …  mais 12 domínios com 1 link cada
 ```

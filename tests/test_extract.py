@@ -11,7 +11,7 @@ def msg(mid, content, ts="2026-08-15T12:30:00.000000+00:00", bot=False, **extra)
         "id": mid,
         "content": content,
         "timestamp": ts,
-        "author": {"username": "dotcom", "global_name": "Dotcom", "bot": bot},
+        "author": {"username": "fulano", "global_name": "Fulano", "bot": bot},
     }
     base.update(extra)
     return base
@@ -39,7 +39,7 @@ class TestExtract(unittest.TestCase):
         hits = extract_links(messages, channel_id="42", guild_id="7")
 
         self.assertEqual([h.url for h in hits], ["https://exemplo.com/a"])
-        self.assertEqual(hits[0].author, "Dotcom")
+        self.assertEqual(hits[0].author, "Fulano")
         self.assertEqual(hits[0].jump_url, "https://discord.com/channels/7/42/1")
 
     def test_context_excludes_the_url_itself(self):
@@ -115,13 +115,13 @@ class TestCanonizacaoX(unittest.TestCase):
     """O X manteve twitter.com vivo: o mesmo tweet circula nas duas formas."""
 
     def test_twitter_e_x_viram_a_mesma_url(self):
-        canonica = "https://x.com/aaditsh/status/1965535452582326333"
+        canonica = "https://x.com/alguem/status/1900000000000000000"
         for url in (
-            "https://x.com/aaditsh/status/1965535452582326333",
-            "https://twitter.com/aaditsh/status/1965535452582326333",
-            "https://www.twitter.com/aaditsh/status/1965535452582326333",
-            "https://mobile.twitter.com/aaditsh/status/1965535452582326333",
-            "https://x.com/aaditsh/status/1965535452582326333?t=4kPdzh7k&s=33",
+            "https://x.com/alguem/status/1900000000000000000",
+            "https://twitter.com/alguem/status/1900000000000000000",
+            "https://www.twitter.com/alguem/status/1900000000000000000",
+            "https://mobile.twitter.com/alguem/status/1900000000000000000",
+            "https://x.com/alguem/status/1900000000000000000?t=4kPdzh7k&s=33",
         ):
             with self.subTest(url=url):
                 self.assertEqual(normalize_url(url), canonica)
@@ -156,9 +156,9 @@ class TestJumpUrlDoServidor(unittest.TestCase):
         return [msg("999", "olha https://exemplo.com/x")]
 
     def test_com_guild_o_link_aponta_para_o_servidor(self):
-        hit = extract_links(self.mensagens(), "42", guild_id="741836424646754355")[0]
+        hit = extract_links(self.mensagens(), "42", guild_id="1217985616281600000")[0]
         self.assertEqual(
-            hit.jump_url, "https://discord.com/channels/741836424646754355/42/999"
+            hit.jump_url, "https://discord.com/channels/1217985616281600000/42/999"
         )
 
     def test_sem_guild_cai_para_arroba_me(self):

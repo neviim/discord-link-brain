@@ -123,8 +123,8 @@ linha e o que era esperado.
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
 | `test_documentacao.py` | 1 | o número de testes anunciado no README contra a suíte real |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| `test_segredos.py` | 8 | **o que não pode entrar num repo público**: padrão de credencial, `TOKEN=` com valor, `.gitignore` cobrindo `.env.bak`, rede privada |
-| **total** | **841** | 89% das linhas de `dlb/` |
+| `test_segredos.py` | 12 | **o que não pode entrar num repo público**: padrão de credencial, `TOKEN=` com valor, `.gitignore` cobrindo `.env.bak`, rede privada, id real do Discord, padrão de fuso e de caminho, perfil em `User-Agent` |
+| **total** | **845** | 89% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.

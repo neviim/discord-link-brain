@@ -248,7 +248,7 @@ class TestCorpo(LinkNoteCase):
     def test_contexto_da_mensagem_sobrevive(self):
         _, texto = self.escrever(note("https://e.com/a", "Relays", []))
         self.assertIn("olha isso", texto)
-        self.assertIn("Dotcom", texto)
+        self.assertIn("Fulano", texto)
         self.assertIn("09:12", texto)
 
     def test_pagina_ilegivel_ainda_gera_nota(self):

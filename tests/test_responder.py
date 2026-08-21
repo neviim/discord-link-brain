@@ -29,7 +29,7 @@ def cfg_falso(**kw):
     return Config(**base)
 
 
-def msg(mid, content, autor="Jads", autor_id="7", bot=False, reacoes=None):
+def msg(mid, content, autor="Sicrano", autor_id="7", bot=False, reacoes=None):
     m = {
         "id": mid,
         "content": content,

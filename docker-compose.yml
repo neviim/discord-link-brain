@@ -32,7 +32,7 @@ services:
     environment:
       # Vencem o que veio do .env — dentro do container o vault é /vault.
       OBSIDIAN_VAULT: /vault
-      TZ: ${TIMEZONE:-America/Sao_Paulo}
+      TZ: ${TIMEZONE:-UTC}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
       # Grade de 6 em 6 horas ancorada na meia-noite: 00:00, 06:00, 12:00, 18:00.
@@ -97,7 +97,7 @@ services:
     env_file: .env
     environment:
       OBSIDIAN_VAULT: /vault
-      TZ: ${TIMEZONE:-America/Sao_Paulo}
+      TZ: ${TIMEZONE:-UTC}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
       DLB_MODE: responder
@@ -133,7 +133,7 @@ services:
       - .env
     environment:
       OBSIDIAN_VAULT: /vault
-      TZ: ${TIMEZONE:-America/Sao_Paulo}
+      TZ: ${TIMEZONE:-UTC}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
       PYTHONDONTWRITEBYTECODE: "1"

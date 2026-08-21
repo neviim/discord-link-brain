@@ -451,7 +451,7 @@ class TestFronteira(PainelCase):
                 self.assertIn("Host não atendido", corpo)
 
     def test_o_hostname_da_maquina_passa(self):
-        """É o que se digita numa tailnet com MagicDNS: `http://dotcom:8765`.
+        """É o que se digita numa tailnet com MagicDNS: `http://maquina:8765`.
 
         Aceitar não abre rebinding: um atacante não controla esse nome. Recusar
         quebraria o único jeito confortável de acessar de outra máquina.

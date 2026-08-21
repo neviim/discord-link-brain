@@ -3,8 +3,8 @@
 As duas ações do painel: triar uma nota e disparar um comando do ciclo.
 
 O teste que manda neste arquivo é `test_o_arquivo_sai_identico_fora_da_linha_da_triagem`.
-A triagem é a **única** coisa que o painel escreve no vault, e o vault é o trabalho
-do Dotcom: o que ele digitou abaixo de `## Minhas notas`, as relações que
+A triagem é a **única** coisa que o painel escreve no vault, e o vault é trabalho
+humano: o que a pessoa digitou abaixo de `## Minhas notas`, as relações que
 acrescentou à mão, a ordem em que deixou o frontmatter. Uma escrita que
 "normalizasse" o arquivo enquanto muda uma palavra seria uma perda silenciosa, e
 silenciosa é a pior categoria — ninguém confere um arquivo que a ferramenta diz ter

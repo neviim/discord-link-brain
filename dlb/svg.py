@@ -1,7 +1,7 @@
 """Gráficos em SVG montados no servidor, sem uma linha de JavaScript de biblioteca.
 
 O painel entrega **markup pronto**: o navegador só desenha. Isso não é preferência
-estética, é o requisito que o Dotcom colocou — dashboard ágil, que não pese. Uma
+estética, é o requisito do projeto — dashboard ágil, que não pese. Uma
 biblioteca de gráfico custaria centenas de KB baixados, parse, layout e um segundo
 modelo de dados no cliente; um `<svg>` de 2 KB custa o que custa desenhar.
 

@@ -25,31 +25,31 @@ atualizado: 2026-08-17
 tags:
   - area/ia
 relacionado:
-  - "[[FONTE - Discord 🔗_arquivar - 2026-08-17]]"
+  - "[[FONTE - Discord 🔗_links - 2026-08-17]]"
 ---
 
 # 2026-08-17
 
 Acordei tarde — anotação minha, o parser tem que ignorar.
 
-## Links do Discord — #🔗_arquivar
+## Links do Discord — #🔗_links
 
 <!-- discord-link-brain -->
 
-3 link(s) capturados em 2026-08-17. Fonte crua e cronológica: [[FONTE - Discord 🔗_arquivar - 2026-08-17]].
+3 link(s) capturados em 2026-08-17. Fonte crua e cronológica: [[FONTE - Discord 🔗_links - 2026-08-17]].
 
 ### repositorio
 
 - **[cosmtrek/mindwalk — replay de sessões](https://github.com/cosmtrek/mindwalk)** — Binário Go local — lê logs do Claude Code — e reproduz a sessão como luz num mapa 3D.
   *Por que importa:* Dá para ver onde o agente gastou tempo.
   Conceitos: [[Nostr]], Mindwalk *(candidato)*, Go *(candidato)*
-  <sub>10:31 · Jads · #area/ia</sub>
+  <sub>10:31 · Sicrano · #area/ia</sub>
 
 ### video
 
 - **[Harness Engineering (Hora de Codar)](https://www.youtube.com/watch?v=aaa)** — Vídeo sobre construir agentes 10x mais espertos.
   Conceitos: Harness Engineering *(candidato)*
-  <sub>11:02 · Jads · #area/ia</sub>
+  <sub>11:02 · Sicrano · #area/ia</sub>
 
 *Mais 1 link(s) capturados em 2026-08-17.*
 
@@ -57,7 +57,7 @@ Acordei tarde — anotação minha, o parser tem que ignorar.
 
 - **[I Found The END GAME of Homelab Tunnels](https://www.youtube.com/watch?v=bbb)** — Túneis de homelab.
   *Por que importa:* Resolve exposição sem abrir porta.
-  <sub>19:44 · Jads · #area/pkm</sub>
+  <sub>19:44 · Sicrano · #area/pkm</sub>
 
 ### Candidatos a página no wiki
 
@@ -79,18 +79,18 @@ tipo: fonte
 status: maduro
 criado: 2026-08-17
 atualizado: 2026-08-17
-autor: "Discord #🔗_arquivar"
+autor: "Discord #🔗_links"
 url:
 capturado: 2026-08-17
 ---
 
-# FONTE - Discord 🔗_arquivar - 2026-08-17
+# FONTE - Discord 🔗_links - 2026-08-17
 
 ## Material
 
 Captura automática de 3 link(s).
 
-### 10:31 — Jads
+### 10:31 — Sicrano
 
 <https://github.com/cosmtrek/mindwalk>
 
@@ -101,7 +101,7 @@ Descrição: Um mapa 3D das suas sessões.
 
 Mensagem original: https://discord.com/channels/7/42/9001
 
-### 11:02 — Jads
+### 11:02 — Sicrano
 
 <https://www.youtube.com/watch?v=aaa>
 
@@ -109,7 +109,7 @@ Título da página: Harness Engineering
 
 Mensagem original: https://discord.com/channels/7/42/9002
 
-### 19:44 — Jads
+### 19:44 — Sicrano
 
 <https://www.youtube.com/watch?v=bbb>
 
@@ -164,7 +164,7 @@ class TestParseSecao(unittest.TestCase):
 
     def test_hora_autor_e_area_vem_do_sub(self):
         self.assertEqual(self.bullets[2].hhmm, "19:44")
-        self.assertEqual(self.bullets[2].autor, "Jads")
+        self.assertEqual(self.bullets[2].autor, "Sicrano")
         self.assertEqual(self.bullets[2].area, "area/pkm")
 
     def test_bloco_de_candidatos_nao_e_confundido_com_link(self):
@@ -192,7 +192,7 @@ class TestParseFonte(unittest.TestCase):
     def test_le_hora_autor_e_link_da_mensagem(self):
         d = self.dados["https://github.com/cosmtrek/mindwalk"]
         self.assertEqual(d["hhmm"], "10:31")
-        self.assertEqual(d["autor"], "Jads")
+        self.assertEqual(d["autor"], "Sicrano")
         self.assertEqual(d["jump_url"], "https://discord.com/channels/7/42/9001")
 
     def test_le_titulo_e_descricao_da_pagina(self):
@@ -210,7 +210,7 @@ class MigrarCase(VaultCase):
     def setUp(self):
         super().setUp()
         (self.root / "40_DIARIO" / "2026-08-17.md").write_text(DIARIO, encoding="utf-8")
-        (self.root / "10_FONTES" / "FONTE - Discord 🔗_arquivar - 2026-08-17.md").write_text(
+        (self.root / "10_FONTES" / "FONTE - Discord 🔗_links - 2026-08-17.md").write_text(
             FONTE, encoding="utf-8"
         )
 
@@ -247,7 +247,7 @@ class TestMigrar(MigrarCase):
         self.rodar()
         path = next((self.root / "50_LINKS").glob("*mindwalk*.md"))
         meta, corpo = frontmatter.split(path.read_text(encoding="utf-8"))
-        self.assertEqual(meta["autor"], "Jads")
+        self.assertEqual(meta["autor"], "Sicrano")
         self.assertEqual(meta["dominio"], "github.com")
         self.assertEqual(meta["categoria"], "repositorio")
         self.assertIn("10:31", corpo)
@@ -317,14 +317,14 @@ class TestMigrar(MigrarCase):
 
     def test_dia_sem_fonte_e_reportado_e_pulado(self):
         """Sem fonte não há como declarar `fonte` — invariante 5. Não se inventa."""
-        (self.root / "10_FONTES" / "FONTE - Discord 🔗_arquivar - 2026-08-17.md").unlink()
+        (self.root / "10_FONTES" / "FONTE - Discord 🔗_links - 2026-08-17.md").unlink()
         rel = self.rodar()
         self.assertEqual(rel.criados, 0)
         self.assertEqual(len(rel.avisos), 1)
         self.assertIn("sem nota em 10_FONTES", rel.avisos[0])
 
     def test_link_ausente_da_fonte_ainda_gera_nota_com_aviso(self):
-        fonte = self.root / "10_FONTES" / "FONTE - Discord 🔗_arquivar - 2026-08-17.md"
+        fonte = self.root / "10_FONTES" / "FONTE - Discord 🔗_links - 2026-08-17.md"
         fonte.write_text(
             fonte.read_text(encoding="utf-8").replace(
                 "<https://www.youtube.com/watch?v=bbb>", "<https://outra.com/z>"
@@ -379,14 +379,14 @@ class TestRepararJump(unittest.TestCase):
     correção mora na camada derivada, como o invariante 9 prescreve.
     """
 
-    GUILDS = {"1414144747806920734": "741836424646754355"}
+    GUILDS = {"1422734760345600000": "1217985616281600000"}
 
     def test_troca_arroba_me_pelo_servidor(self):
         self.assertEqual(
             reparar_jump(
-                "https://discord.com/channels/@me/1414144747806920734/999", self.GUILDS
+                "https://discord.com/channels/@me/1422734760345600000/999", self.GUILDS
             ),
-            "https://discord.com/channels/741836424646754355/1414144747806920734/999",
+            "https://discord.com/channels/1217985616281600000/1422734760345600000/999",
         )
 
     def test_canal_desconhecido_fica_intacto(self):
@@ -396,7 +396,7 @@ class TestRepararJump(unittest.TestCase):
         self.assertEqual(reparar_jump(url, {}), url)
 
     def test_url_ja_correta_nao_e_mexida(self):
-        url = "https://discord.com/channels/741836424646754355/1414144747806920734/999"
+        url = "https://discord.com/channels/1217985616281600000/1422734760345600000/999"
         self.assertEqual(reparar_jump(url, self.GUILDS), url)
 
     def test_jump_vazio_nao_explode(self):
@@ -405,21 +405,21 @@ class TestRepararJump(unittest.TestCase):
 
 class TestMigrarReparaJump(MigrarCase):
     def test_a_nota_migrada_leva_o_link_reparado(self):
-        self.rodar(guilds={"42": "741836424646754355"})
+        self.rodar(guilds={"42": "1217985616281600000"})
         path = next((self.root / "50_LINKS").glob("*mindwalk*.md"))
         # A fixture da fonte usa /channels/7/42/9001, que já tem servidor.
         self.assertIn("https://discord.com/channels/7/42/9001", path.read_text())
 
     def test_fonte_com_arroba_me_vira_link_valido_na_nota(self):
-        fonte = self.root / "10_FONTES" / "FONTE - Discord 🔗_arquivar - 2026-08-17.md"
+        fonte = self.root / "10_FONTES" / "FONTE - Discord 🔗_links - 2026-08-17.md"
         fonte.write_text(
             fonte.read_text(encoding="utf-8").replace("channels/7/42/", "channels/@me/42/"),
             encoding="utf-8",
         )
-        self.rodar(guilds={"42": "741836424646754355"})
+        self.rodar(guilds={"42": "1217985616281600000"})
         path = next((self.root / "50_LINKS").glob("*mindwalk*.md"))
         texto = path.read_text(encoding="utf-8")
-        self.assertIn("channels/741836424646754355/42/9001", texto)
+        self.assertIn("channels/1217985616281600000/42/9001", texto)
         self.assertNotIn("channels/@me", texto)
         # E a fonte continua como capturou: invariante 9.
         self.assertIn("channels/@me/42/9001", fonte.read_text(encoding="utf-8"))

@@ -58,7 +58,7 @@ DLB_HOST_VAULT="$(expand_home "$VAULT_RAW")"
 [[ -d "$DLB_HOST_VAULT" ]] || die "vault não encontrado: $DLB_HOST_VAULT"
 export DLB_HOST_VAULT
 
-TIMEZONE="$(env_get TIMEZONE)"; export TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
+TIMEZONE="$(env_get TIMEZONE)"; export TIMEZONE="${TIMEZONE:-UTC}"
 
 DLB_UID="$(id -u)"; DLB_GID="$(id -g)"; export DLB_UID DLB_GID
 

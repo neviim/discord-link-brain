@@ -1,6 +1,6 @@
 """Os números do dashboard, agregados numa passada e memorizados por versão.
 
-O requisito do Dotcom foi explícito: dashboard que ele olhe todo dia e que **não
+O requisito foi explícito: dashboard para olhar todo dia e que **não
 pese**. Isso decide o desenho inteiro deste módulo.
 
 ## Três camadas de economia, e o que cada uma custa

@@ -420,7 +420,7 @@ class TestTelaDeConfig(PainelCase):
         por causa de uma configuração que ele não usa — e o painel só passaria a
         usá-la ao reiniciar, não com o `up`."""
         self.env.write_text(
-            "DISCORD_TOKEN=x\nPAINEL_TOKEN=segredo\nPAINEL_HOSTS=dotcom\n"
+            "DISCORD_TOKEN=x\nPAINEL_TOKEN=segredo\nPAINEL_HOSTS=maquina\n"
             "PAINEL_CHAT_MAX_POR_HORA=5\n",
             encoding="utf-8",
         )
@@ -577,7 +577,7 @@ class TestTelaDeConfig(PainelCase):
         self.assertIn("origem cruzada", corpo)
 
     def test_origem_opaca_nao_bloqueia_o_formulario(self):
-        """O defeito que o Dotcom levou na cara, e a causa era minha.
+        """O defeito que apareceu no uso real, e a causa era minha.
 
         Eu mandava `Referrer-Policy: no-referrer` em toda resposta. O navegador
         obedece: não manda `Referer` **e** serializa a origem como opaca, mandando

@@ -132,7 +132,7 @@ def urls_in_message(message: dict) -> list[str]:
     return found
 
 
-def day_of_message(message: dict, tz: str = "America/Sao_Paulo") -> str:
+def day_of_message(message: dict, tz: str = "UTC") -> str:
     """Dia local da mensagem — o mesmo agrupamento que `LinkHit.day` usa."""
     return (
         datetime.fromisoformat(message["timestamp"].replace("Z", "+00:00"))
@@ -145,7 +145,7 @@ def extract_links(
     messages: list[dict],
     channel_id: str,
     guild_id: str | None = None,
-    tz: str = "America/Sao_Paulo",
+    tz: str = "UTC",
     include_bots: bool = False,
 ) -> list[LinkHit]:
     """Mensagens cruas → links deduplicados, em ordem cronológica."""

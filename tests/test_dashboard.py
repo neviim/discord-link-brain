@@ -2,7 +2,7 @@
 
 O dashboard: agregados, SVG e o custo de cada atualização.
 
-Dois grupos de garantia aqui, e o segundo é o que o Dotcom pediu explicitamente:
+Dois grupos de garantia aqui, e o segundo é o que foi pedido explicitamente:
 
 - **o número está certo** — os agregados saem de uma passada sobre as entradas, e um
   erro de contagem num dashboard é pior que nenhum dashboard, porque ele é olhado

@@ -157,7 +157,7 @@ class Estado:
 
         - **loopback e o endereço de bind** — o que o próprio servidor atende;
         - **o hostname da máquina** — é o que se digita numa tailnet com MagicDNS
-          (`http://dotcom:8765`), e um atacante não controla esse nome, então
+          (`http://maquina:8765`), e um atacante não controla esse nome, então
           aceitá-lo não abre o caminho de rebinding;
         - **`PAINEL_HOSTS`** — para nome completo de MagicDNS ou domínio de proxy,
           declarado por quem opera em vez de deduzido por mim.
@@ -292,8 +292,8 @@ class Estado:
 
         `pendentes` é a lista de chaves em que o `.env` já mudou e o container
         ainda não sabe. É o estado de produto **salvo ≠ aplicado**, e ele não é
-        cosmético: `restart` não relê o `.env`, então sem esta lista o Dotcom teria
-        de adivinhar se o valor que ele digitou está valendo.
+        cosmético: `restart` não relê o `.env`, então sem esta lista você teria
+        de adivinhar se o valor que digitou está valendo.
         """
         do_arquivo = env_io.ler(self.cfg.env_path)
         inspecao = compose.inspecionar()
@@ -1616,8 +1616,8 @@ class Handler(BaseHTTPRequestHandler):
             # HTTP/1.1 exige `Host`. Ausente é cliente estranho, não navegador.
             return False
         nome = bruto.rsplit(":", 1)[0].strip("[]") if ":" in bruto else bruto
-        # Ponto final é FQDN absoluto e legal no `Host`; `dotcom.ts.net.` e
-        # `dotcom.ts.net` são o mesmo nome, e tratá-los como diferentes daria 421
+        # Ponto final é FQDN absoluto e legal no `Host`; `maquina.ts.net.` e
+        # `maquina.ts.net` são o mesmo nome, e tratá-los como diferentes daria 421
         # em navegador que manda a forma absoluta.
         nome = nome.rstrip(".")
         porta = bruto.rsplit(":", 1)[1] if ":" in bruto else ""
@@ -1674,7 +1674,7 @@ class Handler(BaseHTTPRequestHandler):
         """A recusa diz **o que viu e o que aceita**, não só que recusou.
 
         "origem cruzada recusada" sozinho custou uma ida e volta de adivinhação
-        com o Dotcom: sem o valor do `Origin`, nem eu nem ele sabíamos se era
+        em campo: sem o valor do `Origin`, ninguém sabia se era
         proxy, nome diferente ou processo velho. Estes campos são cabeçalhos do
         próprio navegador dele — não há segredo em devolvê-los, e há um dia de
         diferença em ter ou não.

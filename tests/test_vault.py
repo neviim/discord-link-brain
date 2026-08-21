@@ -22,7 +22,7 @@ def note(url, titulo, conceitos, hhmm="09:12"):
             url=url,
             channel_id="42",
             message_id="1",
-            author="Dotcom",
+            author="Fulano",
             posted_at=datetime(2026, 8, 15, hour, minute, tzinfo=TZ),
             context="olha isso",
             jump_url="https://discord.com/channels/7/42/1",
@@ -75,7 +75,7 @@ class TestFonte(VaultCase):
         self.assertEqual(str(meta["criado"]), "2026-08-15")
         self.assertEqual(meta["parte-de"], ["[[MOC - Captura Discord]]"])
         self.assertIn("https://exemplo.com/a", body)
-        self.assertIn("09:12 — Dotcom", body)
+        self.assertIn("09:12 — Fulano", body)
 
     def test_wikilinks_in_properties_are_quoted(self):
         self.vault.write_fonte("estudos", "2026-08-15", [note("https://e.com/a", "T", [])])

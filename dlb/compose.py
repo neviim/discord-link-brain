@@ -13,7 +13,7 @@ pararia de conferir.
 Então a agenda mostra **as duas colunas** e marca a divergência. A autoridade é o
 container quando ele está no ar; o arquivo é a intenção.
 
-`docker inspect` é leitura, roda no host com o usuário do Dotcom, e **não** precisa
+`docker inspect` é leitura, roda no host com o usuário que subiu o painel, e **não** precisa
 do socket montado em lugar nenhum — é o mesmo acesso que ele já tem no terminal.
 Se o docker não estiver instalado, o container não existir, ou o comando demorar,
 a resposta é `None` e a tela mostra só o arquivo, dizendo que mostrou só o arquivo.

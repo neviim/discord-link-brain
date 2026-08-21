@@ -77,7 +77,7 @@ class Uso:
 
     Espelha o que o `responder` já faz com `respostas[]` no cursor dele: guarda os
     instantes da última hora e descarta o resto. Não é métrica — é o dado que faz
-    o teto valer e que a tela mostra para o Dotcom saber quanto da janela de uso o
+    o teto valer e que a tela mostra para você saber quanto da janela de uso o
     painel consumiu.
     """
 

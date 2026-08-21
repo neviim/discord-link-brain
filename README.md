@@ -71,7 +71,7 @@ Exemplo de saída real:
   executar pelo terminal tudo o que se faz na interface do app.
   *Por que importa:* Abre caminho para automatizar operações no vault por script.
   Conceitos: [[Obsidian]], [[Obsidian CLI]]
-  <sub>16:55 · Dotcom · #area/pkm</sub>
+  <sub>16:55 · Fulano · #area/pkm</sub>
 ```
 
 ## Instalação
@@ -112,7 +112,7 @@ desenvolvedor** ligado; botão direito no canal → *Copiar ID*.
 DISCORD_TOKEN=<token do bot>
 DISCORD_CHANNEL_IDS=123456789
 DISCORD_CHANNEL_NAMES=123456789:estudos
-OBSIDIAN_VAULT=~/Documents/00_Obsidian-dotcom/dotcom
+OBSIDIAN_VAULT=~/Documents/Obsidian/vault
 ```
 
 > **Nota sobre token de usuário.** O código aceita `DISCORD_TOKEN_TYPE=user`
@@ -201,7 +201,7 @@ Termina com `✔ PASSOU` (código 0) ou `✘ FALHOU` (código 1) — e `⚠ NADA
 (código 2) quando o comando não chegou a rodar a suíte, porque zero teste executado
 não é sucesso.
 
-**841 testes, 89% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
+**845 testes, 89% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
 ou o vault real. Os sete modos, o mapa de o-que-cobre-o-quê e como medir cobertura
 estão em [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 

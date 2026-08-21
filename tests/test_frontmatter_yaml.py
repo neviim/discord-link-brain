@@ -37,8 +37,8 @@ HAZARDS = {
     "apostrofo": "o 'jeito' certo",
     "dois_pontos_meio": "CS25: Transformers United! (Stanford)",
     "barra": "cosmtrek/mindwalk — replay de sessões",
-    "cerquilha": "Discord #🔗_arquivar",
-    "emoji": "canal 🔗_arquivar",
+    "cerquilha": "Discord #🔗_links",
+    "emoji": "canal 🔗_links",
     "wikilink": "[[MOC - Captura Discord]]",
     "contrabarra": "caminho\\com\\barra",
     "espaco_nas_pontas": "  espaco nas pontas  ",
@@ -84,7 +84,7 @@ class TestSegundoBlocoNuncaAparece(unittest.TestCase):
     """A cascata: reescrever uma nota não pode gerar dois frontmatters."""
 
     def test_reescrever_nota_com_texto_hostil_mantem_um_frontmatter(self):
-        meta = {"tipo": "link", "autor": "- Jads", "titulo": "[Vídeo] do Tokio"}
+        meta = {"tipo": "link", "autor": "- Sicrano", "titulo": "[Vídeo] do Tokio"}
         texto = frontmatter.compose(meta, "# corpo\n")
 
         # Segunda passada, como faz `_append_diario` e `write_link_note --force`.
@@ -94,7 +94,7 @@ class TestSegundoBlocoNuncaAparece(unittest.TestCase):
 
         self.assertEqual(final.count("---"), 2)
         conferido, _ = frontmatter.split(final)
-        self.assertEqual(conferido["autor"], "- Jads")
+        self.assertEqual(conferido["autor"], "- Sicrano")
         self.assertEqual(conferido["titulo"], "[Vídeo] do Tokio")
 
 

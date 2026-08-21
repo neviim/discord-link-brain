@@ -23,13 +23,24 @@ Varredura manual não escala e não sobrevive à próxima semana. Teste sobreviv
    público quando um placeholder ensina a mesma coisa.
 5. **Caminho absoluto de casa de alguém** — `/home/<nome>/...` em exemplo de
    documento. Vaza o usuário e só funciona na máquina de quem escreveu.
+6. **Id longo fora da lista sintética** — snowflake do Discord tem 17 a 19 dígitos.
+   Id de canal não abre porta nenhuma sem token, mas revela que o servidor existe, e
+   colar um id real num teste durante depuração é a coisa mais fácil do mundo.
+7. **Padrão neutro de fuso e de caminho** — o sistema roda na máquina de quem
+   instalar. Fuso de um lugar específico embutido no código faz o sistema mentir a
+   hora para todo mundo que não mora lá, e caminho de vault com nome de pessoa não
+   existe na máquina de mais ninguém.
+8. **Perfil de pessoa em URL de código** — `github.com/<usuário>` num `User-Agent`
+   sai pela rede em toda requisição. Esse vazamento não fica no repositório: ele
+   viaja, e nem apagar o repo o desfaz.
 
-## O que este teste NÃO decide
+## Por que lista-branca, e não lista-negra
 
-Nome de usuário, apelido e id de canal do Discord **não** são credenciais — id de
-canal não dá acesso a nada sem token e sem participação no servidor. Se devem ou não
-aparecer num repo público é decisão de quem publica, não regra de segurança, e este
-teste não a toma pelo dono.
+Este arquivo é rastreado e vai ser **público**. Listar aqui o nome, o tailnet ou o id
+que se quer proibir *publicaria exatamente aquilo que se está tirando* — a lista
+negra viraria o vazamento. Daí todo teste daqui ser por **forma** (a coisa parece um
+snowflake? parece um fuso regional?) ou por **lista-branca** (o padrão é um destes
+valores neutros?). Nenhum valor pessoal aparece neste arquivo, de propósito.
 """
 
 import re
@@ -103,6 +114,39 @@ CASA_DE_ALGUEM = re.compile(
     r"/home/(?!SEU|seu|usuario|user\b|dlb\b)[a-z][a-z0-9_-]{2,}/"
 )
 
+# Snowflake do Discord tem 17 a 19 dígitos. Estes são **sintéticos**, e de propósito
+# com zeros no fim: id assim se lê como fabricado à primeira vista. O timestamp
+# embutido é real, o que mantém o teste de aritmética de `--since` com sentido.
+IDS_SINTETICOS = {
+    "1422734760345600000",   # canal de exemplo, criado em 2025-10-01
+    "1217985616281600000",   # servidor de exemplo, criado em 2024-03-15
+    "1900000000000000000",   # id de post numa URL de exemplo
+}
+ID_LONGO = re.compile(r"\b[0-9]{17,20}\b")
+
+# Fuso de um lugar específico, na forma `Regiao/Cidade`, e **só em posição de
+# valor**: depois de `=`, de `:-` (interpolação do compose) ou de `TIMEZONE=`.
+#
+# A primeira versão casava o arquivo inteiro e acusou o comentário do próprio
+# `.env.example` que **ensina** a declarar o fuso ("`America/Sao_Paulo`,
+# `Europe/Lisbon`"). Documentação citando um fuso é o oposto do defeito: é o que
+# faz quem instala declarar o dele.
+REGIAO = r"(?:America|Europe|Asia|Africa|Australia|Pacific|Atlantic|Indian|Antarctica)"
+FUSO_COMO_VALOR = re.compile(rf"""(?:=\s*["']?|:-)({REGIAO}/\w+)""")
+
+# Onde o **padrão** mora. Teste pode usar fuso regional como dado — é justamente
+# assim que se testa a virada do dia. O que não pode é o padrão de fábrica.
+ONDE_O_PADRAO_MORA = (
+    ".env.example", "dlb.sh", "docker-compose.yml",
+    "dlb/config.py", "dlb/agenda.py", "dlb/cli.py", "dlb/extract.py",
+)
+
+# Lista-branca do que "neutro" significa para o caminho do vault.
+VAULT_NEUTRO = ("~/Documents/Obsidian/vault", "Documents/Obsidian/vault")
+
+# `github.com/<um-segmento>` é perfil de pessoa; com dois é repositório.
+PERFIL_EM_URL = re.compile(r"github\.com/[A-Za-z0-9_.-]+(?![A-Za-z0-9_./-])")
+
 # Este próprio arquivo contém os padrões, por definição. E o `.env.example` é o
 # contrato de nomes de variável — ele tem `DISCORD_TOKEN=` vazio de propósito.
 ISENTOS = {"tests/test_segredos.py"}
@@ -173,6 +217,80 @@ class TestNadaDeSegredoNoRepositorio(unittest.TestCase):
                 linha = texto[: m.start()].count("\n") + 1
                 achados.append(f"{rel}:{linha} {m.group(0)}")
         self.assertEqual(achados, [], "caminho absoluto de casa de alguém")
+
+
+@unittest.skipUnless(shutil.which("git"), "precisa do git para listar os rastreados")
+class TestNadaDeIdentidadeDeTerceiro(unittest.TestCase):
+    """O que não é credencial e ainda assim não pertence a um repositório público."""
+
+    def test_nenhum_id_longo_fora_da_lista_sintetica(self):
+        """Id de canal do Discord não abre porta sem token — mas revela o servidor.
+
+        Colar um id real num teste enquanto se depura é a coisa mais fácil do mundo,
+        e ninguém revisa isso de novo antes do push. A lista de sintéticos é
+        pequena de propósito: id novo tem de ser adicionado à mão, e é nesse
+        momento que alguém pergunta se ele é real.
+        """
+        achados = []
+        for rel, texto in textos():
+            for m in ID_LONGO.finditer(texto):
+                if m.group(0) in IDS_SINTETICOS:
+                    continue
+                linha = texto[: m.start()].count("\n") + 1
+                achados.append(f"{rel}:{linha} id longo {m.group(0)}")
+        self.assertEqual(
+            achados, [],
+            "id de 17-20 dígitos fora de IDS_SINTETICOS — se for sintético, "
+            "acrescente lá com um comentário dizendo o que ele representa",
+        )
+
+    def test_o_fuso_padrao_nao_e_de_um_lugar_so(self):
+        """`America/Sao_Paulo` embutido como padrão faz o sistema mentir a hora na
+        máquina de quem não mora lá — e mentir plausivelmente, que é o pior tipo.
+
+        Fuso regional **como dado de teste** é legítimo: é assim que se testa a
+        virada do dia. Por isso este teste só olha onde o padrão de fábrica mora.
+        """
+        achados = []
+        for rel, texto in textos():
+            if rel not in ONDE_O_PADRAO_MORA:
+                continue
+            for m in FUSO_COMO_VALOR.finditer(texto):
+                linha = texto[: m.start()].count("\n") + 1
+                achados.append(f"{rel}:{linha} {m.group(0)}")
+        self.assertEqual(achados, [], "fuso de um lugar específico como padrão — use UTC")
+
+    def test_o_caminho_padrao_do_vault_e_neutro(self):
+        """O padrão do `OBSIDIAN_VAULT` tem de existir na máquina de qualquer um.
+
+        Conferido por **lista-branca**: a lista-negra teria de conter o caminho
+        pessoal que se está tirando, e escrevê-lo aqui o publicaria de novo.
+        """
+        exemplo = (RAIZ / ".env.example").read_text(encoding="utf-8")
+        m = re.search(r"^OBSIDIAN_VAULT=(.*)$", exemplo, re.M)
+        self.assertIsNotNone(m, "`.env.example` perdeu a linha do OBSIDIAN_VAULT")
+        self.assertIn(m.group(1).strip(), VAULT_NEUTRO)
+
+        config = (RAIZ / "dlb" / "config.py").read_text(encoding="utf-8")
+        m2 = re.search(r"vault_path: Path = Path\.home\(\) / \"([^\"]+)\"", config)
+        self.assertIsNotNone(m2, "`config.py` mudou a forma do padrão de vault_path")
+        self.assertIn(m2.group(1), VAULT_NEUTRO)
+
+    def test_nenhum_perfil_de_pessoa_em_url_do_codigo(self):
+        """Este é o único item da varredura que **não** fica no repositório.
+
+        O `User-Agent` levava `github.com/<usuário>` para o Discord em toda
+        requisição. Apagar o repo não desfaz isso: já viajou. Link para
+        repositório (`github.com/dono/projeto`) segue permitido — é referência.
+        """
+        achados = []
+        for rel, texto in textos():
+            if not rel.startswith("dlb/"):
+                continue
+            for m in PERFIL_EM_URL.finditer(texto):
+                linha = texto[: m.start()].count("\n") + 1
+                achados.append(f"{rel}:{linha} {m.group(0)}")
+        self.assertEqual(achados, [], "perfil de pessoa em URL dentro de `dlb/`")
 
 
 @unittest.skipUnless(shutil.which("git"), "precisa do git")

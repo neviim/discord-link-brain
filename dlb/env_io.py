@@ -145,7 +145,7 @@ def escrever(caminho: Path, valores: dict[str, str], backup: bool = True) -> Res
     """Aplica `valores` no `.env`, atômico, com backup.
 
     Ordem das operações, e ela é a diferença entre um arquivo consistente e um
-    `.env` que trancou o Dotcom fora do próprio sistema:
+    `.env` que tranca o dono fora do próprio sistema:
 
     1. lê o arquivo inteiro;
     2. monta o texto novo **em memória**;
@@ -165,7 +165,7 @@ def escrever(caminho: Path, valores: dict[str, str], backup: bool = True) -> Res
     # Ausente e vazio contam como iguais, e isto não é detalhe: o formulário posta
     # as 55 chaves de uma vez, a maioria em branco porque nunca foi configurada.
     # Sem esta linha, salvar qualquer coisa acrescentaria cinquenta linhas
-    # `CHAVE=` ao `.env` do Dotcom, de uma vez.
+    # `CHAVE=` ao `.env`, de uma vez.
     #
     # O que se perde: não dá para criar, pela tela, uma linha vazia de chave que
     # ainda não existe no arquivo. O caso que **importa** — esvaziar
