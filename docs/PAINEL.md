@@ -96,11 +96,12 @@ Duas coisas que o serviço **não** faz sozinho:
 | banner diz "PAINEL_TOKEN vazio" mas o `.env` tem | processo velho no ar — reinicie |
 | mudei o `.env` e nada mudou | é a faixa *salvo ≠ aplicado*: clique em aplicar |
 
-## As seis telas
+## As sete telas
 
 | Tela | Responde |
 |---|---|
-| **Painel** (`/`) | O agendador está vivo? O responder está vivo? Quanto tem no acervo, quanto está na fila de triagem, o que rodou por último, onde está o cursor de cada canal. |
+| **Painel** (`/`) | O **dashboard**: quanto tem no acervo, o ritmo dos últimos 30 dias, a triagem, as categorias, de onde vem, o que está esperando trabalho — e o estado agora, atualizado sozinho. |
+| **Estado** (`/estado`) | A mesma informação em tabela, número por número: heartbeats, cursor de cada canal, o ciclo, as últimas execuções. |
 | **Execuções** (`/execucoes`) | Uma linha por run, do mais recente para o mais antigo, com status, duração, contadores e erro. Filtra por comando. |
 | **Agenda** (`/agenda`) | Qual dos três modos está valendo, quando é o próximo disparo, e o que cada um dos quatro comandos do ciclo vai fazer. |
 | **Acervo** (`/acervo`) | As notas de `50_LINKS/`, com busca literal por título, resumo, domínio e conceito, e faceta por triagem. |
@@ -117,6 +118,78 @@ curl -s localhost:8765/api/acervo     | jq '.total, .resumo.por_triagem'
 curl -s 'localhost:8765/api/acervo?q=nostr&triagem=inbox&limite=20' | jq '.no_filtro'
 curl -s 'localhost:8765/api/chat?q=o+que+eu+sei+de+nostr'             | jq -r '.resposta.texto'
 ```
+
+## O dashboard, e por que ele é leve
+
+Seis gráficos, **nenhuma biblioteca**. O SVG é montado no servidor e o navegador só
+desenha. Medido no acervo real (102 notas): **7,5 ms** por requisição quente, **18 KB**
+de HTML, 74 dicas nativas de `<title>`.
+
+Três camadas de economia:
+
+| Camada | Custo medido |
+|---|---|
+| memo do acervo por `(mtime_ns, size)` | 138 ms na 1ª leitura, **2,2 ms** depois |
+| uma passada para todos os agregados | 5,3 ms |
+| cache por versão do acervo | **0,31 ms** quando nada mudou |
+
+A versão é `(quantidade, maior mtime_ns)`: muda quando nota entra, sai ou é editada,
+e em mais nada. É o que faz o tempo real custar quase zero.
+
+### O tempo real que não consulta o servidor
+
+Duas classes de número, dois tratamentos:
+
+- **o que muda a cada segundo** — idade do heartbeat, contagem até o próximo disparo,
+  tempo de pé do painel — é aritmética de relógio **no navegador**, a partir de um
+  instante base. Zero requisição. Pedir ao servidor para ele responder "1 s mais que
+  antes" seria gastar rede para fazer subtração;
+- **o que muda quando o vault muda** vem por SSE a cada 5 s: cinco números e a
+  **versão do acervo**. Versão diferente → a página recarrega, porque gráfico é SVG do
+  servidor. Captura acontece algumas vezes ao dia, e recarregar nessa frequência é
+  mais barato que qualquer atualização parcial.
+
+Aba escondida fecha a conexão. Teto de **4 clientes** simultâneos, com 503 acima
+disso: `ThreadingHTTPServer` gasta uma thread por conexão, e SSE não fecha.
+
+### As formas, escolhidas pelo trabalho do dado
+
+| O que | Forma | Por quê |
+|---|---|---|
+| total no acervo | figura herói | é o número que o dashboard lidera; um gráfico de uma barra seria pior |
+| 7 dias, hoje, heartbeats | KPIs | manchete, não série |
+| captura por dia (30) | colunas | tendência no tempo, série única |
+| triagem | empilhada + medidor | parte-para-todo com quatro classes ordenadas |
+| categoria, domínio | barras horizontais | nome longo; na vertical o rótulo precisaria girar |
+| execuções | faixa de status | linha do tempo de estado, com legenda nomeando cada um |
+
+### A cor tem função, e foi validada por script
+
+**Um tom só** para toda barra nominal — categoria, domínio, dia. Colorir barra
+nominal por valor gastaria o canal de identidade reencodando o que o comprimento da
+barra já mostra. **Rampa ordinal de quatro passos** só na triagem, que é ordenada de
+verdade (`inbox → lido → aplicado | descartado`): ali a ordem aparece na cor.
+
+A paleta foi conferida com o validador do padrão de dataviz **contra as superfícies
+deste painel** (`#fbfbfa` claro, `#16171a` escuro), não contra as de referência:
+rampa monotônica, vãos de lightness ≥ 0,06, ponta clara em 2,04:1 (claro) e 2,21:1
+(escuro), tom nominal acima de 3:1 nos dois modos. Os dois tons de status que ficam
+abaixo de 3:1 no claro carregam **rótulo em texto** na legenda — a compensação que a
+paleta exige, não um detalhe opcional.
+
+O modo escuro tem passos próprios, revalidados contra a superfície escura. Não é o
+claro invertido.
+
+### O que ele não inventa
+
+"Pendente de processar" **não** inclui mensagem do Discord ainda não capturada: saber
+isso exigiria chamar a API a cada atualização, com limite de taxa e dependência de
+rede num painel que precisa abrir justamente quando a rede está ruim.
+
+Pendência aqui é o que se sabe de graça, do disco — fila de triagem, histórico
+incompleto, conceito sem página, síntese nunca gerada — e a lista diz **de quem é
+cada uma**: sua ou do pipeline. Misturar as duas produz uma lista que ninguém sabe
+atacar.
 
 ## O gestor: as oito regras
 
