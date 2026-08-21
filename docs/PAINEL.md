@@ -6,12 +6,18 @@ abrir o log do Docker nem o `.state/` na mão.
 Roda **no host**, não dentro do container. Precisa do `.env` do projeto (o mesmo
 que a CLI usa) e de acesso de leitura ao vault.
 
+> **Antes da primeira vez:** o painel não fala com o Discord, mas sobe pela mesma
+> validação de configuração que a CLI — então `DISCORD_TOKEN`, `DISCORD_CHANNEL_IDS`
+> e um `OBSIDIAN_VAULT` que exista precisam estar no `.env`, senão ele recusa subir
+> com "DISCORD_TOKEN não definido". Preencha o `.env` primeiro (ver o README), e
+> depois use a tela `/config` para o resto.
+
 ## Como usar
 
 ### 1. Na sua máquina, e nada mais
 
 ```bash
-cd ~/Developer/discord-link-brain
+cd discord-link-brain                 # a raiz do projeto: é onde o `.env` mora
 python3 -m dlb painel                 # http://127.0.0.1:8765
 python3 -m dlb painel --porta 9000    # se a 8765 estiver ocupada
 ```

@@ -77,7 +77,8 @@ Exemplo de saída real:
 ## Instalação
 
 ```bash
-cd ~/Developer/discord-link-brain
+git clone <url-do-repositorio> discord-link-brain
+cd discord-link-brain
 pip install -r requirements.txt        # requests, PyYAML
 cp .env.example .env                   # e preencha (ver abaixo)
 python3 -m dlb doctor                  # checa vault, LLM e acesso ao Discord
