@@ -103,9 +103,19 @@ ATRIBUICAO = re.compile(
     r"[ \t]*=[ \t]*[\"']?([^\s\"'#\\]+)",
 )
 
+# **Sem caixa, e isso não é zelo: é a brecha por onde um vazamento passou.** A
+# primeira neutralização deste repo substituiu o nome de MagicDNS em minúsculas e
+# deixou passar a **mesma string em MAIÚSCULAS** — que estava num teste de
+# comparação de `Host` sem caixa, ou seja, escrita em maiúsculas de propósito. Ela
+# sobreviveu em três versões antigas de `tests/test_painel.py` e só apareceu numa
+# varredura do histórico feita à mão antes de publicar.
+#
+# Nome de domínio é insensível a caixa por definição, então um guarda sensível a
+# caixa está errado sobre o próprio domínio que verifica.
 REDE_PRIVADA = [
-    ("nome de tailnet", r"\btail[0-9a-f]{5,}\.ts\.net\b"),
-    ("IP de tailnet (CGNAT)", r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b"),
+    ("nome de tailnet", re.compile(r"\btail[0-9a-f]{5,}\.ts\.net\b", re.I)),
+    ("IP de tailnet (CGNAT)",
+     re.compile(r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b")),
 ]
 
 # `dlb` é o usuário que o container cria — `/home/dlb/` é caminho de imagem, não a
@@ -203,10 +213,29 @@ class TestNadaDeSegredoNoRepositorio(unittest.TestCase):
         achados = []
         for rel, texto in textos():
             for nome, padrao in REDE_PRIVADA:
-                for m in re.finditer(padrao, texto):
+                for m in padrao.finditer(texto):
                     linha = texto[: m.start()].count("\n") + 1
                     achados.append(f"{rel}:{linha} {nome}: {m.group(0)}")
         self.assertEqual(achados, [], "identificador de rede privada")
+
+    def test_o_guarda_de_rede_privada_nao_depende_de_caixa(self):
+        """O teste que existe por causa de um vazamento que passou.
+
+        Nome de MagicDNS em MAIÚSCULAS é a forma que sobreviveu à primeira
+        neutralização, porque a substituição era sensível a caixa e o teste de
+        `Host` do painel escreve o nome em maiúsculas de propósito. Um guarda que
+        só vê minúsculas assina embaixo de um repo que ainda tem o nome da rede.
+        """
+        for forma in (
+            "maquina.tailabc12.ts.net",
+            "MAQUINA.TAILABC12.TS.NET",
+            "Maquina.TailAbc12.Ts.Net",
+        ):
+            with self.subTest(forma):
+                nome, padrao = REDE_PRIVADA[0]
+                self.assertIsNotNone(
+                    padrao.search(forma), f"{nome} não pegou {forma}"
+                )
 
     def test_nenhum_caminho_absoluto_de_casa(self):
         """`/home/alguem/...` num exemplo vaza o usuário e só funciona na máquina de
