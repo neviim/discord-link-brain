@@ -93,7 +93,8 @@ linha e o que era esperado.
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `test_gestor.py` | 37 | **as oito regras do gestor**: uma classe por regra, e cada uma prova que dispara *e* que fica calada |
-| `test_config_tela.py` | 78 | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
+| `test_config_tela.py` | 78 |
+| `test_dashboard.py` | 22 | **os agregados e as especificações de marca**: cauda somada em "outros", cache por versão, espessura com teto, vão entre segmentos | **o contrato schema ↔ `.env.example`**, a escrita atômica com rollback, e a fronteira de mutação (CSRF, origem, teto de corpo) |
 | `test_migrar.py` | 41 | o parser do histórico: resumo com travessão, lote repetido, reparo do link da mensagem |
 | `test_ressurgir_temas.py` | 38 | carência, semente determinística, stoplist de plataforma, e **não criar nada no vault** |
 | `test_sintese.py` | 38 | **a fronteira do LLM na síntese**: id inventado, id vazando na prosa, regeneração |
@@ -106,10 +107,10 @@ linha e o que era esperado.
 | `test_bordas.py` | 24 | emoji em nome de canal, página ilegível, snowflake, paginação do Discord |
 | `test_agenda.py` | 27 | **a paridade com o `scheduler.sh`**: executa o Python embutido no shell e compara |
 | `test_journal.py` | 27 | **o histórico e o lock**: um escritor por run, recusa em vez de espera, e falha ≠ recusa |
-| `test_painel.py` | 66 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
+| `test_painel.py` | 68 | **o servidor de verdade**: rota, XSS na ponta, 405 no que escreve, travessia de caminho, recusa fora de loopback |
 | `test_render.py` | 17 | **o escape por construção** — a condição da escolha de não usar Jinja |
 | `test_acervo.py` | 15 | o memo por `mtime`: editar no Obsidian relê **uma** nota, apagada sai do cache |
-| `test_env_compose.py` | 33 | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
+| `test_env_compose.py` | 34 | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
 | `test_chat.py` | 18 | **a fila de um**: duas perguntas simultâneas não abrem dois `codex`, e o teto por hora sobrevive a reinício | o `.env` lido como o `load_dotenv` lê, e `docker inspect` degradando sem derrubar a tela |
 | `test_acoes.py` | 24 | **a escrita cirúrgica da triagem** (arquivo idêntico fora de duas linhas) e a lista branca de comandos |
 | `test_corpus.py` | 24 | leitura de `50_LINKS/`, e a semana ISO na virada do ano |
@@ -120,8 +121,9 @@ linha e o que era esperado.
 | `test_enrich_rede.py` | 17 | **a superfície hostil**: página que não abre, 50 MB de nada, encoding errado, teto de bytes |
 | `test_enrich.py` | 13 | id de vídeo, extração de texto, reconhecimento de marca |
 | `test_frontmatter_yaml.py` | 6 | **a citação de escalar**: 24 classes de texto que quebravam o YAML |
+| `test_documentacao.py` | 1 | o número de testes anunciado no README contra a suíte real |
 | `test_backfill.py` | 4 | **o miolo do backfill**: o dia que vira nota, o servidor no link, e os dois cursores não se pisando |
-| **total** | **808** | 89% das linhas de `dlb/` |
+| **total** | **833** | 89% das linhas de `dlb/` |
 
 Nenhum teste toca a rede, o Discord ou o vault real — todos usam diretório
 temporário e dublês.

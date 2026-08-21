@@ -35,11 +35,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from . import acoes, agenda, chat as chat_mod, compose, env_io, gestor, journal, painel_schema
+from . import acoes, agenda, chat as chat_mod, compose, env_io, gestor, journal, painel_dados, painel_schema, svg
 from .acervo import Acervo, filtrar, resumo
 from .config import Config
 from .models import TRIAGENS
-from .render import Raw, juntar, lista, pagina, substituir, tabela
+from .render import Raw, escapar, juntar, lista, pagina, substituir, tabela
 
 ESTATICOS = Path(__file__).parent / "static"
 
@@ -58,6 +58,17 @@ COOKIE = "dlb_painel"
 # preenchidas, não passa de alguns KB — 256 KB é folga de duas ordens de grandeza
 # e ainda impede que alguém prenda memória mandando um corpo infinito.
 CORPO_MAXIMO = 256 * 1024
+
+# Tempo real do dashboard. Cinco segundos porque nada aqui muda mais rápido: o
+# heartbeat do sync é escrito a cada ciclo de horas, e o relógio da tela é
+# atualizado no **cliente**, sem rede. Um segundo custaria cinco vezes mais e não
+# mostraria nada novo.
+SSE_INTERVALO_S = 5.0
+
+# `ThreadingHTTPServer` gasta uma thread por conexão, e SSE não fecha. Quatro é
+# folga para um usuário com abas abertas; sem teto, aba recarregada mil vezes
+# viraria mil threads.
+SSE_MAXIMO = 4
 
 
 class Erro(RuntimeError):
@@ -109,6 +120,15 @@ class Estado:
         # O chat reusa o memo do acervo: perguntar não relê 77 arquivos se nada
         # mudou, e a resposta sai do mesmo dado que a tela do acervo mostra.
         self.chat = chat_mod.Chat(cfg, self.links)
+
+        # Agregados do dashboard, memorizados por versão do acervo. É o que faz o
+        # tempo real custar 0,3 ms por tick em vez de 5 ms: enquanto nenhuma nota
+        # muda, o dicionário volta como está.
+        self.agregado = painel_dados.Agregado()
+
+        # Instante em que este processo subiu, para o painel dizer desde quando
+        # está de pé sem depender do journal.
+        self.subiu_em = time.time()
 
         # Token de CSRF por processo. Sem cookie e sem sessão: o token vai no
         # formulário, e uma página de outro site não consegue lê-lo por causa da
@@ -317,6 +337,63 @@ class Estado:
         """
         aviso, self.ultimo_aviso = self.ultimo_aviso, Raw("")
         return aviso
+
+    def dashboard(self) -> dict:
+        """Tudo que o dashboard mostra, num dicionário — a tela e a API leem o mesmo.
+
+        Uma fonte para as duas saídas: se a API e o HTML calculassem separado,
+        divergiriam no dia em que alguém mexesse num só.
+        """
+        entradas = self.links()
+        agregado = self.agregado.de(entradas, tz=self.cfg.timezone)
+        cursores = self.cursores()
+        ultimos = self.ultimos()
+        visao = {
+            "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "vault": str(self.cfg.vault_path),
+            "heartbeats": self.heartbeats(),
+            "tolerancia_s": {
+                "sync": self.cfg.health_tolerance,
+                "responder": self.cfg.responder_health_tolerance,
+            },
+            "acervo": resumo(entradas),
+            "cursores": cursores,
+            "ultimas_execucoes": self.execucoes(limite=24),
+            "ultimos": ultimos,
+            "lock": self.lock(),
+        }
+        visao["alertas"] = [a.como_dict() for a in gestor.avaliar(visao)]
+        visao["agregado"] = agregado
+        visao["pendencias"] = painel_dados.pendencias(agregado, cursores, ultimos)
+        visao["leitura"] = vars(self.acervo.ultima)
+        visao["custo"] = self.agregado.estatisticas()
+        visao["painel_de_pe_s"] = round(time.time() - self.subiu_em)
+        visao["agenda"] = self._agenda_curta()
+        return visao
+
+    def _agenda_curta(self) -> dict:
+        """Só o que o dashboard precisa da agenda: modo e próximo disparo.
+
+        Não chama `docker inspect` — aqui o dado vem do arquivo. O `docker inspect`
+        custa dezenas de milissegundos e é decisão certa na tela de Agenda, que é
+        sobre exatidão; num dashboard que atualiza sozinho, seria um subprocess por
+        tick.
+        """
+        do_arquivo = env_io.ler(self.cfg.env_path)
+        modo = agenda.modo_de(do_arquivo)
+        proximo = agenda.proximo(do_arquivo, datetime.now(agenda.fuso(do_arquivo)))
+        return {
+            "modo": modo.nome,
+            "detalhe": modo.detalhe,
+            "proximo": proximo.isoformat(timespec="seconds") if proximo else None,
+            "avisos": modo.avisos,
+        }
+
+    def versao_do_acervo(self) -> str:
+        """Assinatura curta do estado visível, para o cliente saber se vale recarregar."""
+        entradas = self.links()
+        quantos, mtime = painel_dados.versao(entradas)
+        return f"{quantos}-{mtime}"
 
     def com_alertas(self) -> dict:
         """A visão mais o que as oito regras do gestor concluíram sobre ela.
@@ -534,6 +611,211 @@ $execucoes
         ),
     )
     return pagina("Painel", corpo, ativo="/", vault=dados["vault"])
+
+
+_HERO = """<section class="hero">
+  <div class="hero-num">
+    <p class=hero-rotulo>no acervo</p>
+    <p class=hero-valor data-vivo=total>$total</p>
+    <p class=hero-detalhe>$periodo</p>
+  </div>
+  <div class="hero-kpis">$kpis</div>
+</section>"""
+
+_KPI = """<article class="kpi $tom">
+  <p class=kpi-rotulo>$rotulo</p>
+  <p class=kpi-valor$atributo>$valor</p>
+  <p class=kpi-detalhe>$detalhe</p>
+</article>"""
+
+
+def _kpi(rotulo: str, valor: object, detalhe: str = "", tom: str = "", vivo: str = "") -> Raw:
+    return substituir(
+        _KPI,
+        rotulo=rotulo,
+        valor=valor,
+        detalhe=detalhe,
+        tom=tom,
+        atributo=Raw(f' data-vivo="{escapar(vivo)}"') if vivo else Raw(""),
+    )
+
+
+_CARTA = """<article class="carta">
+  <header><h3>$titulo</h3><span class=carta-nota>$nota</span></header>
+  $corpo
+</article>"""
+
+
+def _carta(titulo: str, corpo: Raw, nota: str = "") -> Raw:
+    """Um gráfico por carta, com título que **nomeia a série** — daí não haver legenda
+    em gráfico de série única: a legenda repetiria o título e custaria espaço."""
+    return substituir(_CARTA, titulo=titulo, nota=nota, corpo=corpo)
+
+
+def _delta(n: int) -> str:
+    if n > 0:
+        return f"↑ {n} vs. os 7 dias anteriores"
+    if n < 0:
+        return f"↓ {abs(n)} vs. os 7 dias anteriores"
+    return "igual aos 7 dias anteriores"
+
+
+def _view_dashboard(estado: Estado) -> str:
+    d = estado.dashboard()
+    ag = d["agregado"]
+    bat, tol = d["heartbeats"], d["tolerancia_s"]
+
+    kpis = juntar([
+        _kpi("últimos 7 dias", ag["ultimos7"], _delta(ag["delta7"]),
+             tom="bom" if ag["delta7"] >= 0 else ""),
+        _kpi("hoje", ag["hoje"], f"média de {ag['media_dia']}/dia na semana"),
+        _kpi("agendador", _humano(bat["sync"]),
+             f"tolera {_humano(tol['sync'])}",
+             tom=_tom_heartbeat(bat["sync"], tol["sync"]), vivo="hb-sync"),
+        _kpi("responder", _humano(bat["responder"]), "volta de 60 em 60 s",
+             tom=_tom_heartbeat(bat["responder"], tol["responder"]), vivo="hb-resp"),
+    ], "")
+
+    hero = substituir(
+        _HERO,
+        total=ag["total"],
+        periodo=(f"de {ag['primeiro_dia']} a {ag['ultimo_dia']} · "
+                 f"{ag['dias_com_captura']} dias com captura"),
+        kpis=kpis,
+    )
+
+    # --- ritmo: série temporal de uma série só, um tom só, rótulo no extremo
+    serie = [
+        svg.Fatia(rotulo=x["dia"][5:], valor=x["quantos"],
+                  dica=f"{x['dia']}: {x['quantos']} nota(s)")
+        for x in ag["serie"]
+    ]
+    ritmo = _carta(
+        "Captura por dia, últimos 30",
+        svg.colunas(serie),
+        f"{sum(x['quantos'] for x in ag['serie'])} notas na janela",
+    )
+
+    # --- triagem: rampa ordinal, porque a ordem do ciclo é o significado
+    fatias_tri = [
+        svg.Fatia(rotulo=k, valor=v, dica=f"{k}: {v} nota(s)")
+        for k, v in ag["por_triagem"].items()
+    ]
+    triagem = _carta(
+        "Triagem do acervo",
+        Raw(str(svg.empilhada(fatias_tri))
+            + str(svg.legenda_ordinal(fatias_tri))
+            + str(svg.medidor(ag["triados"], ag["total"], "triado"))),
+        "inbox → lido → aplicado | descartado",
+    )
+
+    categorias = _carta(
+        "Por categoria",
+        svg.barras([
+            svg.Fatia(rotulo=x["rotulo"], valor=x["quantos"]) for x in ag["por_categoria"]
+        ]),
+        "o que você mais guarda",
+    )
+
+    dominios = _carta(
+        "De onde vem",
+        svg.barras([
+            svg.Fatia(rotulo=x["rotulo"], valor=x["quantos"]) for x in ag["por_dominio"]
+        ]),
+        "domínio da URL",
+    )
+
+    # --- execuções: faixa de status, com legenda nomeando cada estado
+    execucoes = list(reversed(d["ultimas_execucoes"]))
+    estados = [
+        (r.get("status") or "?",
+         f"{(r.get('inicio') or '')[:19].replace('T', ' ')} · {r.get('comando')} · {r.get('status')}")
+        for r in execucoes
+    ]
+    contagem: dict[str, int] = {}
+    for e, _ in estados:
+        contagem[e] = contagem.get(e, 0) + 1
+    faixa = _carta(
+        "Últimas execuções",
+        Raw(str(svg.faixa_status(estados)) + str(svg.legenda_status(contagem))),
+        f"{len(estados)} runs · mais antigo à esquerda",
+    )
+
+    pend = d["pendencias"]
+    pendencias = _carta(
+        "Esperando trabalho",
+        tabela(
+            ["o que", "quantos", "de quem", "onde"],
+            [[x["o_que"], x["quantos"], x["de_quem"],
+              substituir('<a href="$onde">$onde</a>', onde=x["onde"])
+              if x["onde"].startswith("/") else x["onde"]]
+             for x in pend],
+            vazio="Nada pendente. Raro e bom.",
+        ),
+        "máquina e humano separados",
+    )
+
+    ag_curta = d["agenda"]
+    proximo = ag_curta["proximo"]
+    corpo = substituir(
+        """<h1>Painel</h1>
+$hero
+$aviso_lock
+
+<h2>Precisa de atenção</h2>
+<section class=alertas>$alertas</section>
+
+<section class=grade>
+$ritmo
+$triagem
+$categorias
+$dominios
+$pendencias
+$faixa
+</section>
+
+<h2>Agora</h2>
+$agora
+<p class=detalhe>$custo</p>""",
+        hero=hero,
+        aviso_lock=(
+            substituir(
+                "<p class=aviso>$comando está rodando agora (pid $pid, desde $desde).</p>",
+                comando=(d["lock"] or {}).get("comando"),
+                pid=(d["lock"] or {}).get("pid"),
+                desde=(d["lock"] or {}).get("desde"),
+            ) if d["lock"] else Raw("")
+        ),
+        alertas=_alertas(d["alertas"]),
+        ritmo=ritmo,
+        triagem=triagem,
+        categorias=categorias,
+        dominios=dominios,
+        pendencias=pendencias,
+        faixa=faixa,
+        agora=tabela(
+            ["o quê", "estado"],
+            [
+                ["próximo disparo",
+                 Raw(f'<span data-vivo="proximo" data-alvo="{escapar(proximo or "")}">'
+                     f'{escapar((proximo or "não ancorado")[11:16])}</span>')],
+                ["modo do agendador", f"{ag_curta['modo']} — {ag_curta['detalhe']}"],
+                ["painel de pé há",
+                 Raw(f'<span data-vivo="uptime">{escapar(_humano(d["painel_de_pe_s"]))}</span>')],
+                ["notas lidas do disco nesta visita",
+                 f"{d['leitura']['lidos_do_disco']} de {d['leitura']['total']}"],
+            ],
+        ),
+        custo=(
+            f"agregado recalculado {d['custo']['calculos']}× e reusado do cache "
+            f"{d['custo']['reusos']}× · último cálculo {d['custo']['ultimo_custo_ms']} ms"
+        ),
+    )
+    return pagina(
+        "Painel", corpo, ativo="/", vault=d["vault"],
+        rodape=Raw('<span class="vivo vivo-frio"><span class="vivo-pulso"></span>'
+                   "ao vivo · atualiza sozinho</span>"),
+    )
 
 
 def _view_execucoes(estado: Estado, consulta: dict) -> str:
@@ -1548,7 +1830,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             if rota == "/":
+                self._html(_view_dashboard(self.estado), corpo)
+            elif rota == "/estado":
+                # A tela anterior, tabular, continua existindo: o dashboard é para
+                # olhar todo dia, esta é para conferir número por número.
                 self._html(_view_painel(self.estado), corpo)
+            elif rota == "/api/dashboard":
+                self._json(self.estado.dashboard(), corpo)
+            elif rota == "/api/ao-vivo":
+                self._ao_vivo()
             elif rota == "/execucoes":
                 self._html(_view_execucoes(self.estado, consulta), corpo)
             elif rota == "/agenda":
@@ -1620,6 +1910,55 @@ class Handler(BaseHTTPRequestHandler):
             },
             corpo,
         )
+
+    def _ao_vivo(self) -> None:
+        """Fluxo de eventos com os números que mudam sozinhos.
+
+        O que **não** vai por aqui: SVG. Gráfico só muda quando o acervo muda, e aí o
+        cliente recarrega a página inteira — uma vez por captura, algumas vezes ao
+        dia. Mandar SVG a cada tick seria pagar kilobytes por uma imagem idêntica.
+
+        O que vai: um punhado de números e a **versão do acervo**. O cliente compara
+        a versão com a que ele tem e decide recarregar. Custo medido por tick, com o
+        cache do agregado quente: **0,3 ms** de servidor.
+
+        Teto de clientes porque `ThreadingHTTPServer` gasta uma thread por conexão
+        aberta, e conexão de SSE não fecha. Num painel de um usuário, quatro abas é
+        folga; sem teto, uma aba recarregada mil vezes viraria mil threads.
+        """
+        with self.server.trava_sse:                    # type: ignore[attr-defined]
+            if self.server.sse_abertos >= SSE_MAXIMO:  # type: ignore[attr-defined]
+                self._json({"erro": f"máximo de {SSE_MAXIMO} clientes ao vivo"}, True, codigo=503)
+                return
+            self.server.sse_abertos += 1               # type: ignore[attr-defined]
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            while True:
+                dados = self._pulso()
+                self.wfile.write(f"data: {json.dumps(dados, ensure_ascii=False)}\n\n".encode())
+                self.wfile.flush()
+                time.sleep(SSE_INTERVALO_S)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass    # aba fechada; é o fim normal de um SSE, não erro
+        finally:
+            with self.server.trava_sse:                # type: ignore[attr-defined]
+                self.server.sse_abertos -= 1           # type: ignore[attr-defined]
+
+    def _pulso(self) -> dict:
+        estado = self.estado
+        bat = estado.heartbeats()
+        return {
+            "versao": estado.versao_do_acervo(),
+            "hb_sync": bat["sync"],
+            "hb_responder": bat["responder"],
+            "lock": (estado.lock() or {}).get("comando"),
+            "chat_ocupado": estado.chat.ocupado,
+        }
 
     def _triar(self, campos: dict) -> None:
         estado = self.estado
@@ -1776,6 +2115,8 @@ def construir(cfg: Config, host: str = "127.0.0.1", porta: int = 8765, silencios
         )
     servidor = ThreadingHTTPServer((host, porta), Handler)
     servidor.estado = Estado(cfg)          # type: ignore[attr-defined]
+    servidor.sse_abertos = 0               # type: ignore[attr-defined]
+    servidor.trava_sse = threading.Lock()  # type: ignore[attr-defined]
     servidor.silencioso = silencioso       # type: ignore[attr-defined]
     servidor.daemon_threads = True
     return servidor

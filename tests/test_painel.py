@@ -87,17 +87,19 @@ class PainelCase(VaultCase):
 
 
 class TestTelas(PainelCase):
-    def test_painel_abre_e_mostra_os_cartoes(self):
-        codigo, cabecalhos, html = self.pegar("/")
+    def test_estado_abre_e_mostra_os_cartoes(self):
+        """A tela tabular, que era o `/` antes do dashboard. Continua existindo: o
+        dashboard é para olhar todo dia, esta é para conferir número por número."""
+        codigo, cabecalhos, html = self.pegar("/estado")
         self.assertEqual(codigo, 200)
         self.assertTrue(cabecalhos["Content-Type"].startswith("text/html"))
         for esperado in ("Painel", "Agendador", "Responder", "Acervo", "Fila de triagem"):
             self.assertIn(esperado, html)
 
-    def test_painel_sobrevive_a_state_dir_que_nao_existe(self):
+    def test_estado_sobrevive_a_state_dir_que_nao_existe(self):
         """O painel é o que se abre quando algo já está errado. Vault novo, sem
         `.state`, sem heartbeat e sem run nenhum não pode dar traceback."""
-        codigo, _, html = self.pegar("/")
+        codigo, _, html = self.pegar("/estado")
         self.assertEqual(codigo, 200)
         self.assertIn("nunca", html)         # heartbeat ausente
         self.assertIn("Nenhuma execução registrada", html)
@@ -241,7 +243,7 @@ class TestGestorNaTela(PainelCase):
     def test_o_ciclo_mostra_os_quatro_comandos(self):
         """Três dos quatro não escrevem heartbeat. Sem esta tabela, um `sintese`
         que nunca roda é invisível."""
-        _, _, html = self.pegar("/")
+        _, _, html = self.pegar("/estado")
         for comando in ("sync", "backfill", "sintese", "ressurgir"):
             self.assertIn(comando, html)
 

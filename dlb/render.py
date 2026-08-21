@@ -97,6 +97,7 @@ def tabela(cabecalho: list[str], linhas: list[list[object]], vazio: str = "—")
 
 MENU = (
     ("/", "Painel"),
+    ("/estado", "Estado"),
     ("/execucoes", "Execuções"),
     ("/agenda", "Agenda"),
     ("/acervo", "Acervo"),
