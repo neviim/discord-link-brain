@@ -9,6 +9,7 @@ resolução de semana ISO, a guarda de postar, e o fio entre comando e módulo �
 é justamente o que os testes de unidade não pegam.
 """
 
+import contextlib
 import io
 import os
 import sys
@@ -266,17 +267,56 @@ class TestComandosComModeloDublado(ComandoCase):
 
 
 class TestMain(unittest.TestCase):
-    def test_configuracao_ruim_sai_com_codigo_2(self):
+    """O código 2 e quem está isento dele.
+
+    A construção estrita é o padrão e continua sendo: comando que fala com o
+    Discord sem token não degrada, erra. Mas `painel` e `doctor` são a tela que
+    conserta a configuração e o comando que a explica — recusar os dois por
+    configuração incompleta é o ovo antes da galinha, e num clone novo fecha o
+    ciclo sem saída.
+    """
+
+    def _sem_configuracao(self):
+        """Ambiente de clone novo: nem variável exportada, nem `.env`."""
         salvos = {k: os.environ.pop(k, None) for k in ("DISCORD_TOKEN", "DISCORD_CHANNEL_IDS")}
         original = mod_config.load_dotenv
         mod_config.load_dotenv = lambda *a, **k: None
-        try:
-            self.assertEqual(cli.main(["doctor"]), 2)
-        finally:
+
+        def restaurar():
             mod_config.load_dotenv = original
             for k, v in salvos.items():
                 if v is not None:
                     os.environ[k] = v
+
+        self.addCleanup(restaurar)
+
+    def test_configuracao_ruim_sai_com_codigo_2(self):
+        self._sem_configuracao()
+        self.assertEqual(cli.main(["sync"]), 2)
+
+    def test_doctor_diagnostica_em_vez_de_recusar(self):
+        """Sem isto, o comando que existe para dizer o que está errado é o único
+        que não consegue rodar quando algo está errado."""
+        self._sem_configuracao()
+        saida = io.StringIO()
+        with contextlib.redirect_stdout(saida):
+            codigo = cli.main(["doctor"])
+        # 1 é "achei problemas", que é o desfecho certo. 2 seria "não rodei".
+        self.assertEqual(codigo, 1)
+        texto = saida.getvalue()
+        self.assertIn("DISCORD_TOKEN", texto)
+        self.assertIn("não definido", texto)
+
+    def test_painel_e_doctor_sao_os_unicos_isentos(self):
+        """Lista branca explícita: um comando novo nasce estrito, e mudar isso
+        exige mexer aqui — que é onde se lê por quê."""
+        parser = cli.build_parser()
+        isentos = set()
+        for acao in parser._subparsers._group_actions[0].choices.items():
+            nome, sub = acao
+            if sub.get_default("config_estrita") is False:
+                isentos.add(nome)
+        self.assertEqual(isentos, {"painel", "doctor"})
 
 
 if __name__ == "__main__":

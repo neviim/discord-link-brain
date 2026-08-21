@@ -103,6 +103,35 @@ def ler(caminho: Path) -> dict[str, str]:
     return valores
 
 
+def ambiente_limpo(caminho: Path) -> dict[str, str]:
+    """O ambiente de um subprocess, **sem** as chaves que o `.env` define.
+
+    Mora aqui, e não no `compose`, porque não é sobre docker: é sobre a regra de
+    precedência deste módulo vista do outro lado. `Config.from_env()` chama
+    `load_dotenv()`, que faz `os.environ.setdefault(...)` — então **todo processo
+    longo do projeto carrega em si os valores que o arquivo tinha quando subiu**.
+    O painel é o único processo longo, e é justamente quem dispara filhos.
+
+    Dois defeitos medidos ao vivo, com a mesma causa e sintomas opostos:
+
+    - **o `compose`** recriava o container com o valor de quando o painel subiu,
+      porque a interpolação prefere variável de shell ao arquivo. Código 0, tela
+      dizendo "recriado", faixa de pendente teimando;
+    - **o comando disparado da tela** recusava com "DISCORD_TOKEN não definido"
+      depois de o token ser salvo, porque o painel subiu com `DISCORD_TOKEN=`
+      (vazio, como vem do `.env.example`) e `setdefault` não sobrescreve string
+      vazia. Num clone novo isso fecha o ciclo inteiro: a tela existe para
+      preencher a configuração, e o filho continuava vendo a de antes.
+
+    A limpeza é cirúrgica: sai só o que o arquivo define, para `PATH`, `HOME` e o
+    resto de que o filho precisa continuarem valendo.
+    """
+    ambiente = dict(os.environ)
+    for chave in ler(caminho):
+        ambiente.pop(chave, None)
+    return ambiente
+
+
 def duplicadas(caminho: Path) -> dict[str, list[int]]:
     """Chaves atribuídas mais de uma vez, com as linhas — para a tela avisar.
 

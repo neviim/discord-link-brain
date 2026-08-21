@@ -6,11 +6,26 @@ abrir o log do Docker nem o `.state/` na mão.
 Roda **no host**, não dentro do container. Precisa do `.env` do projeto (o mesmo
 que a CLI usa) e de acesso de leitura ao vault.
 
-> **Antes da primeira vez:** o painel não fala com o Discord, mas sobe pela mesma
-> validação de configuração que a CLI — então `DISCORD_TOKEN`, `DISCORD_CHANNEL_IDS`
-> e um `OBSIDIAN_VAULT` que exista precisam estar no `.env`, senão ele recusa subir
-> com "DISCORD_TOKEN não definido". Preencha o `.env` primeiro (ver o README), e
-> depois use a tela `/config` para o resto.
+> **Num clone novo, comece pelo painel.** Ele sobe **sem** `.env`, sem
+> `DISCORD_TOKEN` e sem vault: é o editor da configuração, e exigir configuração
+> válida para abrir o editor de configuração deixava o clone novo sem primeiro
+> passo. Suba, vá em `/config`, preencha e salve — o `.env` é criado no primeiro
+> salvamento.
+>
+> O que ele faz em vez de recusar é **dizer**: enquanto falta chave obrigatória, uma
+> faixa no topo de **toda** tela nomeia o que falta, aponta o arquivo e diz a
+> consequência. A faixa lê o arquivo a cada requisição, então ela muda no reload
+> depois de você salvar.
+>
+> A tolerância acaba no painel. `sync`, `backfill`, `sintese` e `ressurgir`
+> continuam recusando sem configuração válida, com código 2 — falar com o Discord
+> sem token não é degradação graciosa, é erro. `dlb doctor` também abre sem
+> configuração, por ser o comando que existe para dizer o que está errado.
+>
+> Uma consequência que vale saber: depois de salvar, **comando disparado pela tela
+> já usa o valor novo** (roda em subprocess e relê o arquivo), mas as telas deste
+> painel seguem com a configuração de quando ele subiu, até reiniciar. A segunda
+> faixa avisa exatamente isso quando é o caso.
 
 ## Como usar
 

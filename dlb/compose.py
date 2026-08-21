@@ -22,7 +22,6 @@ a resposta é `None` e a tela mostra só o arquivo, dizendo que mostrou só o ar
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -173,30 +172,6 @@ COMANDO_APLICAR = ("./dlb.sh", "prod", "up")
 TIMEOUT_APLICAR_S = 600.0
 
 
-def _ambiente_limpo(raiz: Path) -> dict[str, str]:
-    """O ambiente do filho, **sem** as chaves que o `.env` define.
-
-    Isto conserta um defeito que só aparece rodando: `Config.from_env()` chama
-    `load_dotenv()`, que faz `os.environ.setdefault(...)`. Ou seja, o painel
-    carrega no **próprio processo** os valores que o `.env` tinha quando ele subiu.
-    O `subprocess` herda esse ambiente, e a interpolação do compose **prefere
-    variável de shell ao arquivo `.env`**.
-
-    Consequência, medida ao vivo: salvar `DLB_HEALTH_TOLERANCE=28800` e clicar em
-    aplicar recriava o container com `28801` — o valor de quando o painel subiu. O
-    comando saía com código 0, a tela dizia "container recriado", e a faixa de
-    pendente continuava lá. O botão não mentia sobre ter rodado; mentia sobre o
-    efeito, que é pior.
-
-    A limpeza é cirúrgica: sai só o que o arquivo define, para `PATH`, `HOME` e o
-    resto de que o `dlb.sh` precisa continuarem valendo.
-    """
-    ambiente = dict(os.environ)
-    for chave in env_io.ler(raiz / ".env"):
-        ambiente.pop(chave, None)
-    return ambiente
-
-
 def aplicar(raiz: Path, timeout: float = TIMEOUT_APLICAR_S) -> dict:
     """Recria o container para o `.env` novo valer. Nunca levanta.
 
@@ -223,7 +198,7 @@ def aplicar(raiz: Path, timeout: float = TIMEOUT_APLICAR_S) -> dict:
         saida = subprocess.run(
             list(COMANDO_APLICAR),
             cwd=str(raiz),
-            env=_ambiente_limpo(raiz),
+            env=env_io.ambiente_limpo(raiz / ".env"),
             capture_output=True,
             text=True,
             timeout=timeout,

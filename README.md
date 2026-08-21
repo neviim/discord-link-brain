@@ -202,7 +202,7 @@ Termina com `✔ PASSOU` (código 0) ou `✘ FALHOU` (código 1) — e `⚠ NADA
 (código 2) quando o comando não chegou a rodar a suíte, porque zero teste executado
 não é sucesso.
 
-**845 testes, 89% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
+**862 testes, 90% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
 ou o vault real. Os sete modos, o mapa de o-que-cobre-o-quê e como medir cobertura
 estão em [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 
