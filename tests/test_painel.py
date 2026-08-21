@@ -465,8 +465,8 @@ class TestFronteira(PainelCase):
     def test_nome_declarado_em_painel_hosts_passa(self):
         """Nome completo de MagicDNS ou domínio de proxy: declarado por quem opera,
         não deduzido."""
-        self.servidor.estado.cfg.painel_hosts = "dotcom.taile537f.ts.net, painel.local"
-        for host in ("dotcom.taile537f.ts.net", "painel.local", "DOTCOM.TAILE537F.TS.NET."):
+        self.servidor.estado.cfg.painel_hosts = "maquina.SEU-TAILNET.ts.net, painel.local"
+        for host in ("maquina.SEU-TAILNET.ts.net", "painel.local", "MAQUINA.SEU-TAILNET.TS.NET."):
             with self.subTest(host):
                 self.assertEqual(self.pegar("/", cabecalhos={"Host": host})[0], 200)
         self.assertEqual(self.pegar("/", cabecalhos={"Host": "outro.local"})[0], 421)

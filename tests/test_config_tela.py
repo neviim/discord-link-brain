@@ -536,15 +536,15 @@ class TestTelaDeConfig(PainelCase):
         """O defeito que apareceu no uso real, e o motivo de a checagem ter mudado.
 
         Com proxy na frente — `tailscale serve`, nginx, qualquer um — o navegador
-        manda `Origin: https://dotcom.taile537f.ts.net` e o proxy reescreve o `Host`
+        manda `Origin: https://maquina.SEU-TAILNET.ts.net` e o proxy reescreve o `Host`
         para `127.0.0.1:8765`. Comparar um com o outro recusava um login legítimo
         com "origem cruzada recusada". Agora a comparação é com a lista de nomes
         que o painel atende, declarada em `PAINEL_HOSTS`.
         """
-        self.servidor.estado.cfg.painel_hosts = "dotcom.taile537f.ts.net"
+        self.servidor.estado.cfg.painel_hosts = "maquina.SEU-TAILNET.ts.net"
         codigo, _ = self.postar(
             "/config/salvar", {"TEMAS_LIMIAR": "17"},
-            cabecalhos={"Origin": "https://dotcom.taile537f.ts.net"},
+            cabecalhos={"Origin": "https://maquina.SEU-TAILNET.ts.net"},
             seguir=False,
         )
         self.assertEqual(codigo, 303)

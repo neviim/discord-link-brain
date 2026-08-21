@@ -1632,7 +1632,7 @@ class Handler(BaseHTTPRequestHandler):
 
         A primeira versão comparava `Origin` com o `Host` **da própria
         requisição**, e isso quebra na hora em que existe proxy na frente: o
-        navegador manda `Origin: https://dotcom.taile537f.ts.net` e o proxy
+        navegador manda `Origin: https://maquina.SEU-TAILNET.ts.net` e o proxy
         reescreve o `Host` para `127.0.0.1:8765`. Os dois deixam de bater, e o
         painel recusava um login perfeitamente legítimo com "origem cruzada
         recusada" — foi o que aconteceu de verdade.

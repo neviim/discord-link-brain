@@ -28,11 +28,11 @@ Duas chaves no `.env`:
 
 ```bash
 PAINEL_TOKEN=<token forte>            # python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-PAINEL_HOSTS=dotcom,dotcom.taile537f.ts.net
+PAINEL_HOSTS=maquina,maquina.SEU-TAILNET.ts.net
 ```
 
 `PAINEL_TOKEN` liga a autenticação; `PAINEL_HOSTS` são os nomes pelos quais o
-painel aceita ser chamado — sem eles, acessar por `http://dotcom:8765` recebe
+painel aceita ser chamado — sem eles, acessar por `http://maquina:8765` recebe
 **421**, porque a checagem de `Host` é o que fecha DNS rebinding.
 
 Depois:
@@ -41,7 +41,7 @@ Depois:
 python3 -m dlb painel --host "$(tailscale ip -4)"
 ```
 
-Da outra máquina, `http://dotcom:8765`. Ele pede o token uma vez e guarda cookie.
+Da outra máquina, `http://maquina:8765`. Ele pede o token uma vez e guarda cookie.
 O tráfego é WireGuard, então o token não viaja em texto puro na rede mesmo sem TLS.
 **Fora de uma rede já criptografada, ponha um proxy com TLS na frente.**
 
@@ -369,8 +369,8 @@ Aceitos: `127.0.0.1`, `localhost`, `::1`, o endereço de bind, **o hostname da
 máquina** e o que estiver em `PAINEL_HOSTS`. A porta é conferida.
 
 O hostname entra sozinho porque é o que se digita numa tailnet com MagicDNS
-(`http://dotcom:8765`), e um atacante não controla esse nome. O nome completo
-(`dotcom.taile537f.ts.net`) e domínio de proxy vão em `PAINEL_HOSTS`, declarados por
+(`http://maquina:8765`), e um atacante não controla esse nome. O nome completo
+(`maquina.SEU-TAILNET.ts.net`) e domínio de proxy vão em `PAINEL_HOSTS`, declarados por
 quem opera em vez de deduzidos.
 
 O passo a passo para expor na tailnet está em **Como usar**, no topo.
@@ -383,7 +383,7 @@ com `secrets.compare_digest`.
 
 A comparação é com a lista, e não com o `Host` da própria requisição, por um motivo
 que apareceu no uso real: com proxy na frente — `tailscale serve`, nginx — o
-navegador manda `Origin: https://dotcom.taile537f.ts.net` e o proxy reescreve o
+navegador manda `Origin: https://maquina.SEU-TAILNET.ts.net` e o proxy reescreve o
 `Host` para `127.0.0.1:8765`. Comparar um com o outro recusava login legítimo com
 "origem cruzada recusada". Só o nome é comparado, sem porta: atrás de proxy a porta
 pública não é a interna.
@@ -504,7 +504,7 @@ verdade na frente, com TLS e timeouts. A decisão está em `docs/DECISOES.md`.
 Túnel SSH resolve o caso comum sem proxy nenhum:
 
 ```bash
-ssh -N -L 8765:127.0.0.1:8765 dotcom
+ssh -N -L 8765:127.0.0.1:8765 maquina
 ```
 
 ## O acervo é lido do disco, não de um índice

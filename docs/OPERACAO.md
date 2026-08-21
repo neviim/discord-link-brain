@@ -294,5 +294,5 @@ python3 -m dlb backfill --restart     # recomeça do zero (o dedup evita duplica
 ## Rodar sem Docker
 
 ```cron
-0 */6 * * *  cd /home/neviim/Developer/discord-link-brain && /usr/bin/python3 -m dlb sync >> /tmp/dlb.log 2>&1
+0 */6 * * *  cd "$HOME"/Developer/discord-link-brain && /usr/bin/python3 -m dlb sync >> /tmp/dlb.log 2>&1
 ```

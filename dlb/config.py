@@ -120,7 +120,7 @@ class Config:
 
     # Nomes que o painel aceita no cabeçalho `Host`, além de loopback, do endereço
     # de bind e do hostname da máquina. Necessário para nome de MagicDNS
-    # (`dotcom.taile537f.ts.net`) ou para um proxy com domínio próprio.
+    # (`maquina.SEU-TAILNET.ts.net`) ou para um proxy com domínio próprio.
     painel_hosts: str = ""
 
     # O painel precisa ler o **arquivo**, não o ambiente do processo:
