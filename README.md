@@ -77,7 +77,7 @@ Exemplo de saída real:
 ## Instalação
 
 ```bash
-git clone <url-do-repositorio> discord-link-brain
+git clone https://github.com/neviim/discord-link-brain.git
 cd discord-link-brain
 pip install -r requirements.txt        # requests, PyYAML
 cp .env.example .env                   # e preencha (ver abaixo)
@@ -202,7 +202,7 @@ Termina com `✔ PASSOU` (código 0) ou `✘ FALHOU` (código 1) — e `⚠ NADA
 (código 2) quando o comando não chegou a rodar a suíte, porque zero teste executado
 não é sucesso.
 
-**863 testes, 90% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
+**865 testes, 90% de cobertura** das linhas de `dlb/`. Nenhum toca a rede, o Discord
 ou o vault real. Os sete modos, o mapa de o-que-cobre-o-quê e como medir cobertura
 estão em [docs/DESENVOLVIMENTO.md](docs/DESENVOLVIMENTO.md).
 
