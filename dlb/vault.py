@@ -923,7 +923,11 @@ class Vault:
                 "dá para ver o que entrou em que dia e o que ainda não virou página",
                 "no wiki.",
                 "",
-                "Pipeline: `discord-link-brain` (em `~/Developer/discord-link-brain`).",
+                # Sem caminho: esta linha é escrita no vault de quem instalar, e
+                # o caminho de quem escreveu o código não existe na máquina dele.
+                # `dlb doctor` diz onde o pipeline está e como está configurado.
+                "Pipeline: `discord-link-brain` — `python3 -m dlb doctor` mostra a",
+                "configuração em uso.",
                 "",
                 "## Capturas por dia",
                 "",

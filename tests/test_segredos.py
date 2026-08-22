@@ -154,12 +154,43 @@ ONDE_O_PADRAO_MORA = (
 # Lista-branca do que "neutro" significa para o caminho do vault.
 VAULT_NEUTRO = ("~/Documents/Obsidian/vault", "Documents/Obsidian/vault")
 
+# Caminho que **presume uma pasta intermediária** dentro da casa de alguém:
+# `~/Developer/discord-link-brain` só existe na máquina de quem escreveu, e o  # guarda:exemplo
+# `WorkingDirectory` de um serviço de usuário com esse caminho falha em silêncio
+# para todo mundo. Por **forma**, e não por lista-negra: o que se proíbe é o
+# segmento a mais, não um nome específico.
+#
+# Passa: `%h/discord-link-brain`, `$HOME/discord-link-brain`, e qualquer URL de
+# repositório (`github.com/dono/discord-link-brain`), que é endereço, não caminho.
+PASTA_PRESUMIDA = re.compile(
+    r"""(?:~|\$HOME|"\$HOME"|%h)/[^/\s`"']+/discord-link-brain"""
+)
+
 # `github.com/<um-segmento>` é perfil de pessoa; com dois é repositório.
 PERFIL_EM_URL = re.compile(r"github\.com/[A-Za-z0-9_.-]+(?![A-Za-z0-9_./-])")
 
 # Este próprio arquivo contém os padrões, por definição. E o `.env.example` é o
 # contrato de nomes de variável — ele tem `DISCORD_TOKEN=` vazio de propósito.
-ISENTOS = {"tests/test_segredos.py"}
+# Marcador de **linha** isenta. Este arquivo já foi isento inteiro, e isso era o
+# buraco: o único arquivo que a varredura não olhava era o esconderijo perfeito —
+# um segredo colado aqui passava, e passava justamente no arquivo que ninguém
+# revisa duas vezes porque "é o guarda". Provado por mutação: com o arquivo isento,
+# um nome de tailnet realista colado aqui deixa a suíte verde.
+#
+# Agora só a linha marcada é ignorada, e o resto deste arquivo é varrido como
+# qualquer outro. Exemplo que **precisa** parecer com a coisa proibida leva o
+# marcador na própria linha, à vista de quem revisa o diff.
+#
+# Escrito em dois pedaços de propósito: se a linha da definição contivesse o
+# marcador inteiro, ela se isentaria a si mesma — e a linha que declara a política
+# seria a primeira que a varredura deixaria de ver.
+MARCA_ISENTA = "guarda" ":exemplo"
+
+
+def sem_isentas(texto: str) -> str:
+    """Zera as linhas marcadas, **preservando a contagem** — o número de linha de
+    um achado tem de continuar apontando para o lugar certo."""
+    return "\n".join("" if MARCA_ISENTA in linha else linha for linha in texto.split("\n"))
 
 
 def rastreados() -> list[Path]:
@@ -174,10 +205,10 @@ def textos() -> list[tuple[str, str]]:
     saida = []
     for caminho in rastreados():
         rel = str(caminho.relative_to(RAIZ))
-        if rel in ISENTOS or not caminho.is_file():
+        if not caminho.is_file():
             continue
         try:
-            saida.append((rel, caminho.read_text(encoding="utf-8")))
+            saida.append((rel, sem_isentas(caminho.read_text(encoding="utf-8"))))
         except (UnicodeDecodeError, OSError):
             continue    # binário ou ilegível: nada de texto para varrer
     return saida
@@ -218,6 +249,29 @@ class TestNadaDeSegredoNoRepositorio(unittest.TestCase):
                     achados.append(f"{rel}:{linha} {nome}: {m.group(0)}")
         self.assertEqual(achados, [], "identificador de rede privada")
 
+    def test_o_guarda_varre_o_proprio_arquivo(self):
+        """Sem isto, nada impede alguém de reintroduzir a isenção do arquivo inteiro.
+
+        A isenção por arquivo é confortável e é exatamente o que transforma o guarda
+        em esconderijo. A isenção certa é por **linha**, e aparece no diff.
+        """
+        varridos = dict(textos())
+        self.assertIn("tests/test_segredos.py", varridos)
+        proprio = varridos["tests/test_segredos.py"]
+        # Não basta estar na lista: o conteúdo tem de chegar. Uma isenção
+        # implementada como "devolve texto vazio" passaria no `assertIn` acima.
+        self.assertIn("def rastreados", proprio)
+
+        # O outro lado do contrato: linha marcada sai. Comparado por **linha
+        # inteira**, e não citando o valor de exemplo — a fonte deste teste também
+        # é varrida, então escrever aqui o literal que ele proíbe o faria falhar por
+        # causa de si mesmo. Foi exatamente o que aconteceu na primeira versão.
+        bruto = (RAIZ / "tests" / "test_segredos.py").read_text(encoding="utf-8")
+        marcadas = [l for l in bruto.split("\n") if MARCA_ISENTA in l and l.strip()]
+        self.assertTrue(marcadas, "nenhuma linha marcada: o teste não provaria nada")
+        for linha in marcadas:
+            self.assertNotIn(linha, proprio)
+
     def test_o_guarda_de_rede_privada_nao_depende_de_caixa(self):
         """O teste que existe por causa de um vazamento que passou.
 
@@ -227,9 +281,9 @@ class TestNadaDeSegredoNoRepositorio(unittest.TestCase):
         só vê minúsculas assina embaixo de um repo que ainda tem o nome da rede.
         """
         for forma in (
-            "maquina.tailabc12.ts.net",
-            "MAQUINA.TAILABC12.TS.NET",
-            "Maquina.TailAbc12.Ts.Net",
+            "maquina.tailabc12.ts.net",   # guarda:exemplo — sintético, de propósito
+            "MAQUINA.TAILABC12.TS.NET",   # guarda:exemplo
+            "Maquina.TailAbc12.Ts.Net",   # guarda:exemplo
         ):
             with self.subTest(forma):
                 nome, padrao = REDE_PRIVADA[0]
@@ -238,7 +292,7 @@ class TestNadaDeSegredoNoRepositorio(unittest.TestCase):
                 )
 
     def test_nenhum_caminho_absoluto_de_casa(self):
-        """`/home/alguem/...` num exemplo vaza o usuário e só funciona na máquina de
+        """`/home/<alguém>/...` num exemplo vaza o usuário e só funciona na máquina de
         quem escreveu. `$HOME` ou `%h` funciona em qualquer uma."""
         achados = []
         for rel, texto in textos():
@@ -304,6 +358,26 @@ class TestNadaDeIdentidadeDeTerceiro(unittest.TestCase):
         m2 = re.search(r"vault_path: Path = Path\.home\(\) / \"([^\"]+)\"", config)
         self.assertIsNotNone(m2, "`config.py` mudou a forma do padrão de vault_path")
         self.assertIn(m2.group(1), VAULT_NEUTRO)
+
+    def test_nenhum_caminho_presume_a_pasta_de_quem_escreveu(self):
+        """Uma pasta intermediária presumida só existe na máquina de quem escreveu.
+
+        A forma que sobreviveu foi `~/Developer/discord-link-brain`.  # guarda:exemplo
+
+        Sobreviveu à primeira neutralização em cinco lugares — inclusive no
+        `WorkingDirectory` do serviço systemd, onde o efeito não é cosmético: o
+        serviço não sobe, e a mensagem não diz por quê. Achado varrendo o histórico
+        antes de publicar, não pelos testes.
+        """
+        achados = []
+        for rel, texto in textos():
+            for m in PASTA_PRESUMIDA.finditer(texto):
+                linha = texto[: m.start()].count("\n") + 1
+                achados.append(f"{rel}:{linha} {m.group(0)}")
+        self.assertEqual(
+            achados, [],
+            "caminho presumindo pasta intermediária — use `%h/` ou `$HOME/` direto",
+        )
 
     def test_nenhum_perfil_de_pessoa_em_url_do_codigo(self):
         """Este é o único item da varredura que **não** fica no repositório.

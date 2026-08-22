@@ -7,8 +7,9 @@
 # Instalar (serviço de usuário, sem sudo):
 #
 #   mkdir -p ~/.config/systemd/user
-#   cp docker/dlb-painel.service ~/.config/systemd/user/
-#   # ajuste WorkingDirectory se o projeto não estiver em ~/Developer/discord-link-brain
+#   # da raiz do projeto: escreve o caminho real onde você clonou, seja ele qual for
+#   sed "s|%h/discord-link-brain|$PWD|g" docker/dlb-painel.service \\
+#     > ~/.config/systemd/user/dlb-painel.service
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now dlb-painel
 #   systemctl --user status dlb-painel
@@ -16,6 +17,12 @@
 # Não é "uma linha": o arquivo vive no repositório e precisa ser **copiado** para
 # `~/.config/systemd/user/`. Sem a cópia, `systemctl --user restart dlb-painel`
 # responde `Unit dlb-painel.service not found`.
+#
+# O `sed` existe porque `WorkingDirectory` precisa de caminho absoluto e o systemd
+# não tem como descobrir onde você clonou. O padrão abaixo é `%h/discord-link-brain`
+# — o que o `git clone` do README produz se você clonar dentro de casa. Se clonou
+# em outro lugar, o `sed` acerta sozinho; um `cp` seco também funciona, desde que o
+# lugar seja esse.
 #
 # Para o painel continuar de pé depois de você sair da sessão:
 #
@@ -26,7 +33,7 @@
 
 [Unit]
 Description=Painel do discord-link-brain
-Documentation=file:%h/Developer/discord-link-brain/docs/PAINEL.md
+Documentation=file:%h/discord-link-brain/docs/PAINEL.md
 # O painel lê o vault e fala com o docker, mas não depende deles para subir: ele
 # existe justamente para mostrar que algo está errado quando está.
 After=network-online.target
@@ -37,7 +44,7 @@ After=tailscaled.service
 
 [Service]
 Type=simple
-WorkingDirectory=%h/Developer/discord-link-brain
+WorkingDirectory=%h/discord-link-brain
 # Liga no IP da tailnet quando ele existe, e cai para loopback quando não —
 # no boot o `tailscaled` pode ainda não ter endereço. Sem esse fallback, um
 # `--host ""` viraria bind em todas as interfaces, que é pior que loopback.
