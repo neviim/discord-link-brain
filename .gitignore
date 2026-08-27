@@ -4,6 +4,8 @@
 .env.bak
 .env.tmp
 .state/
+# Lock do deploy/deploy.sh — nasce na raiz em produção a cada execução, nunca é código.
+/.deploy.lock
 __pycache__/
 *.pyc
 .venv/
