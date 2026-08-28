@@ -48,7 +48,7 @@ services:
       # (INTERVAL > EVERY_HOURS > AT) descarta o AT em silêncio — não havia como
       # usar horário fixo pelo perfil prod. Sem os dois-pontos, o padrão vale só
       # quando a chave está **ausente**, e esvaziá-la libera o AT.
-      DLB_SYNC_EVERY_HOURS: ${DLB_SYNC_EVERY_HOURS-6}
+      DLB_SYNC_EVERY_HOURS: ${DLB_SYNC_EVERY_HOURS-2}
       DLB_SYNC_AT: ${DLB_SYNC_AT:-}
       DLB_SYNC_INTERVAL: ${DLB_SYNC_INTERVAL:-}
       DLB_SYNC_ARGS: ${DLB_SYNC_ARGS:-}
