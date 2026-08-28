@@ -35,6 +35,11 @@ services:
       TZ: ${TIMEZONE:-UTC}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
+      # CLAUDE_BIN/CODEX_BIN do .env são o caminho no HOST (pro dlb.sh montar o
+      # volume abaixo) — dentro do container o binário sempre está aqui, senão
+      # o valor do host vaza pro exec e falha com "binário não encontrado".
+      CLAUDE_BIN: /usr/local/bin/claude
+      CODEX_BIN: /usr/local/bin/codex
       # Grade de 6 em 6 horas ancorada na meia-noite: 00:00, 06:00, 12:00, 18:00.
       #
       # `${VAR-6}` e não `${VAR:-6}`, e a diferença de um caractere é o que faz
@@ -100,6 +105,8 @@ services:
       TZ: ${TIMEZONE:-UTC}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
+      CLAUDE_BIN: /usr/local/bin/claude
+      CODEX_BIN: /usr/local/bin/codex
       DLB_MODE: responder
       # O HEALTHCHECK embutido já lê estas duas — zero código novo.
       DLB_HEARTBEAT: /app/.state/heartbeat-responder
@@ -136,6 +143,8 @@ services:
       TZ: ${TIMEZONE:-UTC}
       CLAUDE_CONFIG_DIR: /home/dlb/.claude
       CODEX_HOME: /home/dlb/.codex
+      CLAUDE_BIN: /usr/local/bin/claude
+      CODEX_BIN: /usr/local/bin/codex
       PYTHONDONTWRITEBYTECODE: "1"
     volumes:
       - .:/app
