@@ -12,3 +12,6 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+bin/claude
+bin/claude.src
+bin/claude.tmp
