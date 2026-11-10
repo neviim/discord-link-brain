@@ -214,11 +214,14 @@ def podar(state_dir: Path, manter: int = MANTER_RUNS) -> int:
     removidos = 0
     for d in diretorios[manter:]:
         conhecidos = {"summary.json", "summary.json.tmp", "events.jsonl"}
-        if any(f.name not in conhecidos or f.is_dir() for f in d.iterdir()):
-            continue
-        for f in d.iterdir():
-            f.unlink(missing_ok=True)
-        d.rmdir()
+        try:
+            if any(f.name not in conhecidos or f.is_dir() for f in d.iterdir()):
+                continue
+            for f in d.iterdir():
+                f.unlink(missing_ok=True)
+            d.rmdir()
+        except FileNotFoundError:
+            continue  # outro processo (prod/responder) ja removeu este run
         removidos += 1
     return removidos
 
